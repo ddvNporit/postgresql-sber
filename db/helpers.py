@@ -24,3 +24,11 @@ class DbActions:
         sql = f'SELECT EXTRACT({part} FROM "{column}") FROM {self.table} WHERE "{lookup_col}" = %s'
         self.cursor.execute(sql, (lookup_val,))
         return self.cursor.fetchone()
+
+    def insert_many(self, columns: list, values_list: list):
+        """Массовая вставка записей"""
+        cols_str = ", ".join([f'"{c}"' for c in columns])
+        placeholders = ", ".join(["%s"] * len(columns))
+        sql = f'INSERT INTO {self.table} ({cols_str}) VALUES ({placeholders})'
+        self.cursor.executemany(sql, values_list)
+        return self.cursor.rowcount

@@ -42,7 +42,8 @@ class TestUserDML(PostgreSQLTestCase):
         self.db.insert_record(user_data)
         self.assertEqual(self._cursor.rowcount, 1, "Команда INSERT должна вернуть 1 измененную строку")
 
-        sql = f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s AND "LastName" = %s AND "DataOfBirth" = %s'
+        sql = \
+            f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s AND "LastName" = %s AND "DataOfBirth" = %s'
         self._cursor.execute(sql, tuple(user_data.values()))
         record = self._cursor.fetchone()
 
@@ -54,3 +55,30 @@ class TestUserDML(PostgreSQLTestCase):
 
         self.assertIsNotNone(record[0], "Поле Index не должно быть NULL")
         self.assertIsInstance(record[0], int, "Поле Index должно быть числовым (Integer/Serial)")
+
+    def test_insert_multiple_records(self):
+        """№ 1-2 Проверка INSERT (массовая вставка нескольких записей в таблицу 'People')"""
+        columns = ["FirstName", "LastName", "DataOfBirth"]
+        values = [
+            ('Gretta', 'Watson', '1991-02-02'),
+            ('Polla', 'Kimbel', '1992-03-03')
+        ]
+        rows_affected = self.db.insert_many(columns, values)
+        self.assertEqual(rows_affected, 2, "Должно быть вставлено ровно 2 записи")
+        sql_count = f"""
+            SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}" 
+            WHERE ("FirstName", "LastName", "DataOfBirth") IN (%s, %s)
+        """
+        count_res = self.execute_query(sql_count, (values[0], values[1]))
+        self.assertEqual(count_res[0], 2, "Запрос должен найти 2 вставленные записи")
+        sql_unique = f'SELECT COUNT(DISTINCT "Index") = COUNT(*) FROM "{self.TEST_TABLE_NAME}"'
+        unique_res = self.execute_query(sql_unique)
+        self.assertTrue(unique_res[0], "Все индексы в таблице должны быть уникальными")
+        sql_check_data = f"""
+            SELECT "FirstName", "LastName", "DataOfBirth" 
+            FROM "{self.TEST_TABLE_NAME}" 
+            WHERE "FirstName" = 'Gretta'
+        """
+        gretta_record = self.execute_query(sql_check_data)
+        self.assertEqual(gretta_record[0], 'Gretta')
+        self.assertEqual(str(gretta_record[2]), '1991-02-02')
