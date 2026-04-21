@@ -9,6 +9,7 @@ class DbActions:
         placeholders = ", ".join(["%s"] * len(data))
         sql = f'INSERT INTO {self.table} ({columns}) VALUES ({placeholders})'
         self.cursor.execute(sql, list(data.values()))
+        return self.cursor.rowcount
 
     def get_column_types(self, columns: list, lookup_data: dict):
         """Универсальная проверка типов"""
