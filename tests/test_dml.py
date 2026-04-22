@@ -430,3 +430,39 @@ class TestUserDML(PostgreSQLTestCase):
         record = self._cursor.fetchone()
         self.assertIsNotNone(record)
         self.assertEqual(record[0], 'NEWNAME', "Фамилия Анны должна была измениться на NEWNAME")
+
+    def test_01_22_update_zero_rows(self):
+        """№ 1-22 Проверка UPDATE, обновляющей 0 строк"""
+
+        columns = ["FirstName", "LastName", "DataOfBirth"]
+        values = [('Ivan', 'Ivanov', None), ('Petr', 'Petrov', '1985-05-12'), ('Anna', 'Sidorova', '1995-11-20')]
+        self.db.insert_many(columns, values)
+        self._cursor.execute(f'UPDATE "{self.TEST_TABLE_NAME}" SET "LastName" = %s WHERE "FirstName" = %s',
+                             ('NEWNAME', ''))
+        self.assertEqual(self._cursor.rowcount, 0, "Команда UPDATE должна вернуть 0 затронутых строк")
+        self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}" WHERE "LastName" = %s', ('NEWNAME',))
+        self.assertEqual(self._cursor.fetchone()[0], 0, "Записей с фамилией NEWNAME быть не должно")
+
+    def test_01_23_delete_zero_rows(self):
+        """№ 1-23 Проверка DELETE, удаляющей 0 строк"""
+
+        columns = ["FirstName", "LastName", "DataOfBirth"]
+        values = [('Ivan', 'Ivanov', '1990-01-01'), ('Petr', 'Petrov', '1985-05-12'),
+                  ('Anna', 'Sidorova', '1995-11-20')]
+        self.db.insert_many(columns, values)
+        self._cursor.execute(f'DELETE FROM "{self.TEST_TABLE_NAME}" WHERE 0=1')
+        self.assertEqual(self._cursor.rowcount, 0, "Команда DELETE должна вернуть 0 удаленных строк")
+        self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
+        self.assertEqual(self._cursor.fetchone()[0], 3, "В таблице должно остаться 3 строки")
+
+    def test_01_24_aborted_transaction_behavior(self):
+        """№ 1-24 Проверка битой транзакции (ошибка в синтаксисе)"""
+
+        with self.assertRaises(psycopg2.ProgrammingError) as cm:
+            self._cursor.execute(f'TRUNCAT TABLE "{self.TEST_TABLE_NAME}"')
+        self.assertEqual(cm.exception.pgcode, '42601', "Должна возникнуть ошибка синтаксиса (42601)")
+        with self.assertRaises(psycopg2.InternalError) as cm_aborted:
+            self.db.insert_record({"FirstName": "Ivan", "LastName": "Ivanov"})
+        self.assertEqual(cm_aborted.exception.pgcode, '25P02',
+                         "Транзакция должна быть заблокирована (код 25P02)")
+        self.assertIn('current transaction is aborted', str(cm_aborted.exception).lower())
