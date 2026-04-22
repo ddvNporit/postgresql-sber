@@ -196,3 +196,120 @@ class TestUserDML(PostgreSQLTestCase):
         with self.assertRaises(psycopg2.errors.CheckViolation) as cm:
             self.db.insert_record(invalid_data)
         self.assertIn('violates check constraint', str(cm.exception).lower())
+
+    def test_01_9_index_out_of_range(self):
+        """№ 1-9 Проверка столба 'Index' (вставка значения 2147483648 - выход за границы)"""
+
+        invalid_data = {
+            "Index": 2147483648,
+            "FirstName": "Anna",
+            "LastName": "Smirnova",
+            "DataOfBirth": "2000-12-31"
+        }
+
+        with self.assertRaises(psycopg2.DatabaseError) as cm:
+            self.db.insert_record(invalid_data)
+
+        sqlstate = cm.exception.pgcode
+        self.assertIn(sqlstate, ['22003', '23514'],
+                      f"Ожидался код ошибки 22003 или 23514, но получен {sqlstate}")
+
+        error_msg = str(cm.exception).lower()
+        self.assertTrue('range' in error_msg or 'violate' in error_msg,
+                        f"Текст ошибки не соответствует ожидаемому: {error_msg}")
+
+    def test_01_10_index_maximum_valid_value(self):
+        """№ 1-10 Проверка столба 'Index' (вставка значения 2147483647 - максимум)"""
+
+        max_valid_index = 2147483647
+        data = {
+            "Index": max_valid_index,
+            "FirstName": "Anna",
+            "LastName": "Smirnova",
+            "DataOfBirth": "2000-12-31"
+        }
+        rows_affected = self.db.insert_record(data)
+        self.assertEqual(rows_affected, 1, "Запись с максимальным Index должна быть вставлена успешно")
+        sql = f'SELECT "Index", "FirstName" FROM "{self.TEST_TABLE_NAME}" WHERE "Index" = %s'
+        record = self.execute_query(sql, (max_valid_index,))
+        self.assertIsNotNone(record, "Запись не найдена")
+        self.assertEqual(record[0], max_valid_index, "Значение Index в базе должно быть 2147483647")
+        self.assertEqual(record[1], "Anna")
+
+    def test_01_11_index_negative_value(self):
+        """№ 1-11 Проверка столба 'Index' (вставка с ручным указанием 'Index' < 0)"""
+
+        invalid_data = {
+            "Index": -1,
+            "FirstName": "Petr",
+            "LastName": "Petrov",
+            "DataOfBirth": "1995-05-15"
+        }
+        with self.assertRaises(psycopg2.IntegrityError) as cm:
+            self.db.insert_record(invalid_data)
+        sqlstate = cm.exception.pgcode
+        self.assertEqual(sqlstate, '23514', f"Ожидался код ошибки 23514, но получен {sqlstate}")
+        self.assertIn('violates check constraint', str(cm.exception).lower())
+
+    def test_01_12_index_string_value(self):
+        """№ 1-12 Проверка столба 'Index' (вставка строкового значения в Integer)"""
+
+        invalid_data = {
+            "Index": "Petr",
+            "FirstName": "Petr",
+            "LastName": "Petrov",
+            "DataOfBirth": "1995-05-15"
+        }
+
+        with self.assertRaises(psycopg2.DatabaseError) as cm:
+            self.db.insert_record(invalid_data)
+        sqlstate = cm.exception.pgcode
+        self.assertEqual(sqlstate, '22P02', f"Ожидался код ошибки 22P02, но получен {sqlstate}")
+        error_msg = str(cm.exception).lower()
+        self.assertIn('invalid input syntax for type integer', error_msg)
+
+    def test_01_13_dob_integer_instead_of_date(self):
+        """№ 1-13 Проверка столба 'DataOfBirth' (вставка числа вместо даты)"""
+
+        invalid_data = {
+            "FirstName": "Ivan",
+            "LastName": "Ivanov",
+            "DataOfBirth": 1
+        }
+        with self.assertRaises(psycopg2.DatabaseError) as cm:
+            self.db.insert_record(invalid_data)
+
+        sqlstate = cm.exception.pgcode
+        self.assertEqual(sqlstate, '42804', f"Ожидался код ошибки 42804, но получен {sqlstate}")
+        self.assertIn('is of type date but expression is of type integer', str(cm.exception).lower())
+
+    def test_01_14_dob_valid_string_formats(self):
+        """№ 1-14 Проверка столба 'DataOfBirth' (вставка валидной даты в строковом формате)"""
+
+        data_1 = {"Index": 1, "FirstName": "Ivan", "LastName": "Ivanov", "DataOfBirth": "01-12-1990"}
+        res1 = self.db.insert_record(data_1)
+        self.assertEqual(res1, 1)
+        data_2 = {"Index": 2, "FirstName": "Ivan", "LastName": "Ivanov", "DataOfBirth": "1975-January-1"}
+        res2 = self.db.insert_record(data_2)
+        self.assertEqual(res2, 1)
+        self._cursor.execute(
+            f'SELECT "Index", "DataOfBirth" FROM "{self.TEST_TABLE_NAME}" WHERE "Index" IN (1, 2) ORDER BY "Index"')
+        records = self._cursor.fetchall()
+        self.assertEqual(str(records[0][1]), '1990-12-01')
+        self.assertEqual(str(records[1][1]), '1975-01-01')
+
+    def test_01_15_dob_invalid_month(self):
+        """№ 1-15 Проверка невалидного значения месяца в столбе 'DataOfBirth' (13 месяц)"""
+
+        invalid_data = {
+            "Index": 2,
+            "FirstName": "Error",
+            "LastName": "User",
+            "DataOfBirth": "1975-13-2"
+        }
+        with self.assertRaises(psycopg2.DatabaseError) as cm:
+            self.db.insert_record(invalid_data)
+
+        sqlstate = cm.exception.pgcode
+        self.assertEqual(sqlstate, '22008', f"Ожидался код ошибки 22008, но получен {sqlstate}")
+        self.assertIn('date/time field value out of range', str(cm.exception).lower())
