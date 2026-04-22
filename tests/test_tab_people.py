@@ -1,5 +1,11 @@
-import psycopg2
+"""
+A testing framework for checking PostgreSQL DML operations
+author: Dmitry Denisov
+GitHub: https://github.com/ddvNporit/postgresql-sber
+Email: dima.nporit@gmail.com
+"""
 
+import psycopg2
 from db.base_test import PostgreSQLTestCase
 from db.helpers import DbActions
 
