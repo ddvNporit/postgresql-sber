@@ -39,18 +39,15 @@ class PostgreSQLTestCase(unittest.TestCase):
     def _load_config(cls) -> DBConfig:
         """Логика загрузки конфигурации"""
 
-        env_path = None
-        for i, arg in enumerate(sys.argv):
-            if arg == "-env" and i + 1 < len(sys.argv):
-                env_path = sys.argv[i + 1]
-                break
-            elif arg.startswith("env="):
-                env_path = arg.split("=")[1]
-                break
+        env_path = os.getenv("ENV_FILE")
+        if not env_path:
+            for i, arg in enumerate(sys.argv):
+                if arg == "-env" and i + 1 < len(sys.argv):
+                    env_path = sys.argv[i + 1]
+                    break
 
         if env_path:
             env_path = env_path.strip("'").strip('"')
-
             if os.path.exists(env_path):
                 print(f"--- Используется конфигурация: {env_path} ---")
                 load_dotenv(dotenv_path=env_path, override=True)
