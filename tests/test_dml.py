@@ -1,5 +1,5 @@
 import psycopg2
-
+from psycopg2 import errors
 from db.base_test import PostgreSQLTestCase
 from db.helpers import DbActions
 
@@ -166,3 +166,33 @@ class TestUserDML(PostgreSQLTestCase):
         self.assertIsNotNone(record, "Запись с Index=1 не найдена")
         self.assertEqual(record[0], 1, "Значение в колонке Index должно быть строго равно 1")
         self.assertEqual(record[1], "Petr")
+
+    def test_01_7_index_type_conversion(self):
+        """№ 1-7 Проверка столба 'Index' (вставка с преобразованием типов 2.00)"""
+
+        data = {
+            "Index": 2.00,
+            "FirstName": "Sidor",
+            "LastName": "Sidorov",
+            "DataOfBirth": "1988-10-10"
+        }
+        rows_affected = self.db.insert_record(data)
+        self.assertEqual(rows_affected, 1, "БД должна автоматически привести 2.00 к целому числу")
+        sql = f'SELECT "Index" FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s'
+        record = self.execute_query(sql, (data["FirstName"],))
+        self.assertIsNotNone(record, "Запись не найдена")
+        self.assertEqual(record[0], 2, "Значение Index в базе должно быть равно 2")
+        self.assertIsInstance(record[0], int, "Тип данных в базе должен остаться целочисленным")
+
+    def test_01_8_index_check_constraint_violation(self):
+        """№ 1-8 Проверка столба 'Index' (вставка с ручным указанием 'Index' = 0)"""
+
+        invalid_data = {
+            "Index": 0,
+            "FirstName": "Anna",
+            "LastName": "Smirnova",
+            "DataOfBirth": "2000-12-31"
+        }
+        with self.assertRaises(psycopg2.errors.CheckViolation) as cm:
+            self.db.insert_record(invalid_data)
+        self.assertIn('violates check constraint', str(cm.exception).lower())
