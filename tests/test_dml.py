@@ -1,3 +1,5 @@
+import psycopg2
+
 from db.base_test import PostgreSQLTestCase
 from db.helpers import DbActions
 
@@ -121,8 +123,46 @@ class TestUserDML(PostgreSQLTestCase):
         records = self._cursor.fetchall()
         self.assertEqual(len(records), 3, f"Ожидалось 3 строки, но получено {len(records)}")
         for record in records:
-            self.assertEqual(len(record), 4, "Каждая строка должна содержать 4 колонки (Index, FN, LN, DOB)")
+            (self.assertEqual
+             (len(record), 4, "Каждая строка должна содержать 4 колонки (Index, FN, LN, DOB)"))
         for i, val in enumerate(values):
             self.assertEqual(records[i][1], val[0], f"Имя в строке {i} не совпадает")
             self.assertEqual(records[i][2], val[1], f"Фамилия в строке {i} не совпадает")
             self.assertEqual(str(records[i][3]), val[2], f"Дата рождения в строке {i} не совпадает")
+
+    def test_01_5_first_name_boundaries(self):
+        """№ 1-5 Проверка граничных значений для столбца 'FirstName' (varchar 255)"""
+
+        data_min = {"FirstName": "A", "LastName": "Ivanov", "DataOfBirth": "1990-01-01"}
+        res_min = self.db.insert_record(data_min)
+        self.assertEqual(res_min, 1, "Не удалось вставить строку с FirstName из 1 символа")
+        long_name = "B" * 255
+        data_max = {"FirstName": long_name, "LastName": "Petrov", "DataOfBirth": "1990-01-01"}
+        res_max = self.db.insert_record(data_max)
+        self.assertEqual(res_max, 1, "Не удалось вставить строку с FirstName из 255 символов")
+        data_empty = {"FirstName": "", "LastName": "Kuznetsov", "DataOfBirth": "1990-01-01"}
+        res_empty = self.db.insert_record(data_empty)
+        self.assertEqual(res_empty, 1, "Не удалось вставить строку с пустым FirstName")
+        self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
+        count = self._cursor.fetchone()[0]
+        self.assertEqual(count, 3, f"Ожидалось 3 строки в таблице, но получено {count}")
+        too_long_name = "C" * 256
+        data_error = {"FirstName": too_long_name, "LastName": "Sidorov", "DataOfBirth": "1990-01-01"}
+        with self.assertRaises(psycopg2.DataError):
+            self.db.insert_record(data_error)
+
+    def test_01_6_manual_index_insert(self):
+        """№ 1-6 Проверка столбца 'Index' (вставка с ручным указанием 'Index' = 1)"""
+        manual_data = {
+            "Index": 1,
+            "FirstName": "Petr",
+            "LastName": "Petrov",
+            "DataOfBirth": "1995-05-15"
+        }
+        rows_affected = self.db.insert_record(manual_data)
+        self.assertEqual(rows_affected, 1, "Команда INSERT с ручным Index должна вернуть 1 строку")
+        sql = f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "Index" = 1'
+        record = self.execute_query(sql)
+        self.assertIsNotNone(record, "Запись с Index=1 не найдена")
+        self.assertEqual(record[0], 1, "Значение в колонке Index должно быть строго равно 1")
+        self.assertEqual(record[1], "Petr")
