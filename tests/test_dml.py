@@ -7,6 +7,10 @@ from db.helpers import DbActions
 
 class TestUserDML(PostgreSQLTestCase):
     TEST_TABLE_NAME = 'People'
+    COL_INDEX = "Index"
+    COL_FIRST_NAME = "FirstName"
+    COL_LAST_NAME = "LastName"
+    COL_DOB = "DataOfBirth"
 
     def setUp(self):
         super().setUp()
@@ -14,54 +18,54 @@ class TestUserDML(PostgreSQLTestCase):
 
     def test_1_00_insert_and_verify_properties(self):
         """№ 1-0 Проверка свойств таблицы 'People'"""
+
         user_data = {
-            "FirstName": "Ivan1",
-            "LastName": "Ivanov1",
-            "DataOfBirth": "1989-05-15"
+            self.COL_FIRST_NAME: "Ivan1",
+            self.COL_LAST_NAME: "Ivanov1",
+            self.COL_DOB: "1989-05-15"
         }
 
         self.db.insert_record(user_data)
 
-        cols_to_check = ["Index", "FirstName", "LastName", "DataOfBirth"]
+        cols_to_check = [self.COL_INDEX, self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         res = self.db.get_column_types(cols_to_check, user_data)
 
         self.assertIsNotNone(res)
         self.assertRegex(res[0], r'^\d+: integer$')
-        self.assertEqual(res[1], "Ivan1: character varying")
-        self.assertEqual(res[2], "Ivanov1: character varying")
+        self.assertEqual(res[1], f"Ivan1: character varying")
+        self.assertEqual(res[2], f"Ivanov1: character varying")
         self.assertEqual(res[3], "1989-05-15: date")
 
-        year_res = self.db.get_extracted_part("YEAR", "DataOfBirth", "FirstName", "Ivan1")
+        year_res = self.db.get_extracted_part("YEAR", self.COL_DOB, self.COL_FIRST_NAME, "Ivan1")
         self.assertEqual(int(year_res[0]), 1989)
 
     def test_1_01_insert_full_record_success(self):
         """№ 1-1: Проверка INSERT (успешная вставка полной записи в таблицу 'People')"""
-        user_data = {
-            "FirstName": "Ivan",
-            "LastName": "Ivanov",
-            "DataOfBirth": "1990-01-01"
-        }
 
+        user_data = {
+            self.COL_FIRST_NAME: "Ivan",
+            self.COL_LAST_NAME: "Ivanov",
+            self.COL_DOB: "1990-01-01"
+        }
         self.db.insert_record(user_data)
         self.assertEqual(self._cursor.rowcount, 1, "Команда INSERT должна вернуть 1 измененную строку")
-
         sql = \
-            f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s AND "LastName" = %s AND "DataOfBirth" = %s'
+            (f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s AND "'
+             f'{self.COL_LAST_NAME}" = %s AND "{self.COL_DOB}" = %s')
         self._cursor.execute(sql, tuple(user_data.values()))
         record = self._cursor.fetchone()
-
         self.assertIsNotNone(record, "Запись не найдена в таблице")
-
-        self.assertEqual(record[1], user_data["FirstName"])
-        self.assertEqual(record[2], user_data["LastName"])
-        self.assertEqual(str(record[3]), user_data["DataOfBirth"])
-
-        self.assertIsNotNone(record[0], "Поле Index не должно быть NULL")
-        self.assertIsInstance(record[0], int, "Поле Index должно быть числовым (Integer/Serial)")
+        self.assertEqual(record[1], user_data[self.COL_FIRST_NAME])
+        self.assertEqual(record[2], user_data[self.COL_LAST_NAME])
+        self.assertEqual(str(record[3]), user_data[self.COL_DOB])
+        self.assertIsNotNone(record[0], f"Поле {self.COL_INDEX} не должно быть NULL")
+        self.assertIsInstance(record[0], int,
+                              f"Поле {self.COL_INDEX} должно быть числовым (Integer/Serial)")
 
     def test_1_02_insert_multiple_records(self):
         """№ 1-2 Проверка INSERT (массовая вставка нескольких записей в таблицу 'People')"""
-        columns = ["FirstName", "LastName", "DataOfBirth"]
+
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [
             ('Gretta', 'Watson', '1991-02-02'),
             ('Polla', 'Kimbel', '1992-03-03')
@@ -70,17 +74,17 @@ class TestUserDML(PostgreSQLTestCase):
         self.assertEqual(rows_affected, 2, "Должно быть вставлено ровно 2 записи")
         sql_count = f"""
             SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}" 
-            WHERE ("FirstName", "LastName", "DataOfBirth") IN (%s, %s)
+            WHERE ("{self.COL_FIRST_NAME}", "{self.COL_LAST_NAME}", "{self.COL_DOB}") IN (%s, %s)
         """
         count_res = self.execute_query(sql_count, (values[0], values[1]))
         self.assertEqual(count_res[0], 2, "Запрос должен найти 2 вставленные записи")
-        sql_unique = f'SELECT COUNT(DISTINCT "Index") = COUNT(*) FROM "{self.TEST_TABLE_NAME}"'
+        sql_unique = f'SELECT COUNT(DISTINCT "{self.COL_INDEX}") = COUNT(*) FROM "{self.TEST_TABLE_NAME}"'
         unique_res = self.execute_query(sql_unique)
-        self.assertTrue(unique_res[0], "Все индексы в таблице должны быть уникальными")
+        self.assertTrue(unique_res[0], f"Все индексы в таблице {self.COL_INDEX} должны быть уникальными")
         sql_check_data = f"""
-            SELECT "FirstName", "LastName", "DataOfBirth" 
+            SELECT "{self.COL_FIRST_NAME}", "{self.COL_LAST_NAME}", "{self.COL_DOB}" 
             FROM "{self.TEST_TABLE_NAME}" 
-            WHERE "FirstName" = 'Gretta'
+            WHERE "{self.COL_FIRST_NAME}" = 'Gretta'
         """
         gretta_record = self.execute_query(sql_check_data)
         self.assertEqual(gretta_record[0], 'Gretta')
@@ -88,31 +92,32 @@ class TestUserDML(PostgreSQLTestCase):
 
     def test_1_03_insert_min_fields(self):
         """№ 1-3 Проверка INSERT (вставка записи с минимально необходимым набором полей)"""
+
         user_data = {
-            "FirstName": "Masha",
-            "LastName": "Sidorova"
+            self.COL_FIRST_NAME: "Masha",
+            self.COL_LAST_NAME: "Sidorova"
         }
         rows_affected = self.db.insert_record(user_data)
         self.assertEqual(rows_affected, 1, "Команда INSERT должна вернуть 1 строку")
-        sql_select = f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s AND "LastName" = %s'
-        record = self.execute_query(sql_select, (user_data["FirstName"], user_data["LastName"]))
-
+        sql_select = \
+            f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s AND "{self.COL_LAST_NAME}" = %s'
+        record = (self.execute_query
+                  (sql_select, (user_data[self.COL_FIRST_NAME], user_data[self.COL_LAST_NAME])))
         self.assertIsNotNone(record, "Запись не найдена в таблице")
-        self.assertEqual(record[1], user_data["FirstName"])
-        self.assertEqual(record[2], user_data["LastName"])
-        self.assertIsNone(record[3], "Поле DataOfBirth должно содержать NULL")
-        sql_null_check = f'SELECT ("DataOfBirth" IS NULL) FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s'
-        null_res = self.execute_query(sql_null_check, (user_data["FirstName"],))
+        self.assertEqual(record[1], user_data[self.COL_FIRST_NAME])
+        self.assertEqual(record[2], user_data[self.COL_LAST_NAME])
+        self.assertIsNone(record[3], f"Поле {self.COL_DOB} должно содержать NULL")
+        sql_null_check = \
+            f'SELECT ("{self.COL_DOB}" IS NULL) FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s'
+        null_res = self.execute_query(sql_null_check, (user_data[self.COL_FIRST_NAME],))
         self.assertTrue(null_res[0], "Запрос IS NULL должен вернуть True (t)")
-        self.assertIsNotNone(record[0], "Поле Index не должно быть NULL")
-        self.assertIsInstance(record[0], int, "Поле Index должно быть числовым (Serial)")
-        sql_index_check = f'SELECT ("Index" IS NOT NULL) FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s'
-        index_res = self.execute_query(sql_index_check, (user_data["FirstName"],))
-        self.assertTrue(index_res[0], "Запрос IS NOT NULL должен вернуть True (t)")
+        self.assertIsNotNone(record[0], f"Поле {self.COL_INDEX} не должно быть NULL")
+        self.assertIsInstance(record[0], int, f"Поле {self.COL_INDEX} должно быть числовым (Serial)")
 
     def test_1_04_select_all_records(self):
         """№ 1-4: Проверка SELECT * (возврат всех записей таблицы 'People')"""
-        columns = ["FirstName", "LastName", "DataOfBirth"]
+
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [
             ('Ivan', 'Ivanov', '1990-01-01'),
             ('Petr', 'Petrov', '1985-05-12'),
@@ -120,12 +125,14 @@ class TestUserDML(PostgreSQLTestCase):
         ]
         rows_inserted = self.db.insert_many(columns, values)
         self.assertEqual(rows_inserted, 3, "Должно быть вставлено ровно 3 записи")
-        self._cursor.execute(f'SELECT * FROM "{self.TEST_TABLE_NAME}" ORDER BY "Index" ASC')
+        self._cursor.execute(f'SELECT * FROM "{self.TEST_TABLE_NAME}" ORDER BY "{self.COL_INDEX}" ASC')
         records = self._cursor.fetchall()
         self.assertEqual(len(records), 3, f"Ожидалось 3 строки, но получено {len(records)}")
         for record in records:
             (self.assertEqual
-             (len(record), 4, "Каждая строка должна содержать 4 колонки (Index, FN, LN, DOB)"))
+             (len(record), 4,
+              f"Строка должна содержать 4 колонки "
+              f"({self.COL_INDEX}, {self.COL_FIRST_NAME}, {self.COL_LAST_NAME}, {self.COL_DOB})"))
         for i, val in enumerate(values):
             self.assertEqual(records[i][1], val[0], f"Имя в строке {i} не совпадает")
             self.assertEqual(records[i][2], val[1], f"Фамилия в строке {i} не совпадает")
@@ -134,65 +141,70 @@ class TestUserDML(PostgreSQLTestCase):
     def test_1_05_first_name_boundaries(self):
         """№ 1-5 Проверка граничных значений для столбца 'FirstName' (varchar 255)"""
 
-        data_min = {"FirstName": "A", "LastName": "Ivanov", "DataOfBirth": "1990-01-01"}
+        data_min = {self.COL_FIRST_NAME: "A", self.COL_LAST_NAME: "Ivanov", self.COL_DOB: "1990-01-01"}
         res_min = self.db.insert_record(data_min)
-        self.assertEqual(res_min, 1, "Не удалось вставить строку с FirstName из 1 символа")
+        self.assertEqual(res_min, 1,
+                         f"Не удалось вставить строку с {self.COL_FIRST_NAME} из 1 символа")
         long_name = "B" * 255
-        data_max = {"FirstName": long_name, "LastName": "Petrov", "DataOfBirth": "1990-01-01"}
+        data_max = {self.COL_FIRST_NAME: long_name, self.COL_LAST_NAME: "Petrov", self.COL_DOB: "1990-01-01"}
         res_max = self.db.insert_record(data_max)
-        self.assertEqual(res_max, 1, "Не удалось вставить строку с FirstName из 255 символов")
-        data_empty = {"FirstName": "", "LastName": "Kuznetsov", "DataOfBirth": "1990-01-01"}
+        self.assertEqual(res_max, 1,
+                         f"Не удалось вставить строку с {self.COL_FIRST_NAME} из 255 символов")
+        data_empty = {self.COL_FIRST_NAME: "", self.COL_LAST_NAME: "Kuznetsov", self.COL_DOB: "1990-01-01"}
         res_empty = self.db.insert_record(data_empty)
-        self.assertEqual(res_empty, 1, "Не удалось вставить строку с пустым FirstName")
+        self.assertEqual(res_empty, 1, f"Не удалось вставить строку с пустым {self.COL_FIRST_NAME}")
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
         count = self._cursor.fetchone()[0]
         self.assertEqual(count, 3, f"Ожидалось 3 строки в таблице, но получено {count}")
         too_long_name = "C" * 256
-        data_error = {"FirstName": too_long_name, "LastName": "Sidorov", "DataOfBirth": "1990-01-01"}
+        data_error = {self.COL_FIRST_NAME: too_long_name, self.COL_LAST_NAME: "Sidorov", self.COL_DOB: "1990-01-01"}
         with self.assertRaises(psycopg2.DataError):
             self.db.insert_record(data_error)
 
     def test_1_06_manual_index_insert(self):
         """№ 1-6 Проверка столбца 'Index' (вставка с ручным указанием 'Index' = 1)"""
+
         manual_data = {
-            "Index": 1,
-            "FirstName": "Petr",
-            "LastName": "Petrov",
-            "DataOfBirth": "1995-05-15"
+            self.COL_INDEX: 1,
+            self.COL_FIRST_NAME: "Petr",
+            self.COL_LAST_NAME: "Petrov",
+            self.COL_DOB: "1995-05-15"
         }
         rows_affected = self.db.insert_record(manual_data)
-        self.assertEqual(rows_affected, 1, "Команда INSERT с ручным Index должна вернуть 1 строку")
-        sql = f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "Index" = 1'
+        self.assertEqual(rows_affected, 1,
+                         f"Команда INSERT с ручным {self.COL_INDEX} должна вернуть 1 строку")
+        sql = f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_INDEX}" = 1'
         record = self.execute_query(sql)
-        self.assertIsNotNone(record, "Запись с Index=1 не найдена")
-        self.assertEqual(record[0], 1, "Значение в колонке Index должно быть строго равно 1")
+        self.assertIsNotNone(record, f"Запись с {self.COL_INDEX}=1 не найдена")
+        self.assertEqual(record[0], 1,
+                         f"Значение в колонке {self.COL_INDEX} должно быть строго равно 1")
         self.assertEqual(record[1], "Petr")
 
     def test_1_07_index_type_conversion(self):
         """№ 1-7 Проверка столба 'Index' (вставка с преобразованием типов 2.00)"""
 
         data = {
-            "Index": 2.00,
-            "FirstName": "Sidor",
-            "LastName": "Sidorov",
-            "DataOfBirth": "1988-10-10"
+            self.COL_INDEX: 2.00,
+            self.COL_FIRST_NAME: "Sidor",
+            self.COL_LAST_NAME: "Sidorov",
+            self.COL_DOB: "1988-10-10"
         }
         rows_affected = self.db.insert_record(data)
         self.assertEqual(rows_affected, 1, "БД должна автоматически привести 2.00 к целому числу")
-        sql = f'SELECT "Index" FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s'
-        record = self.execute_query(sql, (data["FirstName"],))
+        sql = f'SELECT "{self.COL_INDEX}" FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s'
+        record = self.execute_query(sql, (data[self.COL_FIRST_NAME],))
         self.assertIsNotNone(record, "Запись не найдена")
-        self.assertEqual(record[0], 2, "Значение Index в базе должно быть равно 2")
+        self.assertEqual(record[0], 2, f"Значение {self.COL_INDEX} в базе должно быть равно 2")
         self.assertIsInstance(record[0], int, "Тип данных в базе должен остаться целочисленным")
 
     def test_1_08_index_check_constraint_violation(self):
         """№ 1-8 Проверка столба 'Index' (вставка с ручным указанием 'Index' = 0)"""
 
         invalid_data = {
-            "Index": 0,
-            "FirstName": "Anna",
-            "LastName": "Smirnova",
-            "DataOfBirth": "2000-12-31"
+            self.COL_INDEX: 0,
+            self.COL_FIRST_NAME: "Anna",
+            self.COL_LAST_NAME: "Smirnova",
+            self.COL_DOB: "2000-12-31"
         }
         with self.assertRaises(psycopg2.errors.CheckViolation) as cm:
             self.db.insert_record(invalid_data)
@@ -202,19 +214,17 @@ class TestUserDML(PostgreSQLTestCase):
         """№ 1-9 Проверка столба 'Index' (вставка значения 2147483648 - выход за границы)"""
 
         invalid_data = {
-            "Index": 2147483648,
-            "FirstName": "Anna",
-            "LastName": "Smirnova",
-            "DataOfBirth": "2000-12-31"
+            self.COL_INDEX: 2147483648,
+            self.COL_FIRST_NAME: "Anna",
+            self.COL_LAST_NAME: "Smirnova",
+            self.COL_DOB: "2000-12-31"
         }
 
         with self.assertRaises(psycopg2.DatabaseError) as cm:
             self.db.insert_record(invalid_data)
-
         sqlstate = cm.exception.pgcode
         self.assertIn(sqlstate, ['22003', '23514'],
                       f"Ожидался код ошибки 22003 или 23514, но получен {sqlstate}")
-
         error_msg = str(cm.exception).lower()
         self.assertTrue('range' in error_msg or 'violate' in error_msg,
                         f"Текст ошибки не соответствует ожидаемому: {error_msg}")
@@ -224,27 +234,29 @@ class TestUserDML(PostgreSQLTestCase):
 
         max_valid_index = 2147483647
         data = {
-            "Index": max_valid_index,
-            "FirstName": "Anna",
-            "LastName": "Smirnova",
-            "DataOfBirth": "2000-12-31"
+            self.COL_INDEX: max_valid_index,
+            self.COL_FIRST_NAME: "Anna",
+            self.COL_LAST_NAME: "Smirnova",
+            self.COL_DOB: "2000-12-31"
         }
         rows_affected = self.db.insert_record(data)
         self.assertEqual(rows_affected, 1, "Запись с максимальным Index должна быть вставлена успешно")
-        sql = f'SELECT "Index", "FirstName" FROM "{self.TEST_TABLE_NAME}" WHERE "Index" = %s'
+        sql = (f'SELECT "{self.COL_INDEX}", "{self.COL_FIRST_NAME}" FROM "{self.TEST_TABLE_NAME}"'
+               f' WHERE "{self.COL_INDEX}" = %s')
         record = self.execute_query(sql, (max_valid_index,))
         self.assertIsNotNone(record, "Запись не найдена")
-        self.assertEqual(record[0], max_valid_index, "Значение Index в базе должно быть 2147483647")
+        self.assertEqual(record[0], max_valid_index,
+                         f"Значение {self.COL_INDEX} в базе должно быть 2147483647")
         self.assertEqual(record[1], "Anna")
 
     def test_1_11_index_negative_value(self):
         """№ 1-11 Проверка столба 'Index' (вставка с ручным указанием 'Index' < 0)"""
 
         invalid_data = {
-            "Index": -1,
-            "FirstName": "Petr",
-            "LastName": "Petrov",
-            "DataOfBirth": "1995-05-15"
+            self.COL_INDEX: -1,
+            self.COL_FIRST_NAME: "Petr",
+            self.COL_LAST_NAME: "Petrov",
+            self.COL_DOB: "1995-05-15"
         }
         with self.assertRaises(psycopg2.IntegrityError) as cm:
             self.db.insert_record(invalid_data)
@@ -256,10 +268,10 @@ class TestUserDML(PostgreSQLTestCase):
         """№ 1-12 Проверка столба 'Index' (вставка строкового значения в Integer)"""
 
         invalid_data = {
-            "Index": "Petr",
-            "FirstName": "Petr",
-            "LastName": "Petrov",
-            "DataOfBirth": "1995-05-15"
+            self.COL_INDEX: "Petr",
+            self.COL_FIRST_NAME: "Petr",
+            self.COL_LAST_NAME: "Petrov",
+            self.COL_DOB: "1995-05-15"
         }
 
         with self.assertRaises(psycopg2.DatabaseError) as cm:
@@ -273,28 +285,30 @@ class TestUserDML(PostgreSQLTestCase):
         """№ 1-13 Проверка столба 'DataOfBirth' (вставка числа вместо даты)"""
 
         invalid_data = {
-            "FirstName": "Ivan",
-            "LastName": "Ivanov",
-            "DataOfBirth": 1
+            self.COL_FIRST_NAME: "Ivan",
+            self.COL_LAST_NAME: "Ivanov",
+            self.COL_DOB: 1
         }
         with self.assertRaises(psycopg2.DatabaseError) as cm:
             self.db.insert_record(invalid_data)
-
         sqlstate = cm.exception.pgcode
         self.assertEqual(sqlstate, '42804', f"Ожидался код ошибки 42804, но получен {sqlstate}")
-        self.assertIn('is of type date but expression is of type integer', str(cm.exception).lower())
+        self.assertIn(f'is of type date but expression is of type integer', str(cm.exception).lower())
 
     def test_1_14_dob_valid_string_formats(self):
         """№ 1-14 Проверка столба 'DataOfBirth' (вставка валидной даты в строковом формате)"""
 
-        data_1 = {"Index": 1, "FirstName": "Ivan", "LastName": "Ivanov", "DataOfBirth": "01-12-1990"}
+        data_1 = {self.COL_INDEX: 1, self.COL_FIRST_NAME: "Ivan", self.COL_LAST_NAME: "Ivanov",
+                  self.COL_DOB: "01-12-1990"}
         res1 = self.db.insert_record(data_1)
         self.assertEqual(res1, 1)
-        data_2 = {"Index": 2, "FirstName": "Ivan", "LastName": "Ivanov", "DataOfBirth": "1975-January-1"}
+        data_2 = {self.COL_INDEX: 2, self.COL_FIRST_NAME: "Ivan", self.COL_LAST_NAME: "Ivanov",
+                  self.COL_DOB: "1975-January-1"}
         res2 = self.db.insert_record(data_2)
         self.assertEqual(res2, 1)
         self._cursor.execute(
-            f'SELECT "Index", "DataOfBirth" FROM "{self.TEST_TABLE_NAME}" WHERE "Index" IN (1, 2) ORDER BY "Index"')
+            f'SELECT "{self.COL_INDEX}", "{self.COL_DOB}" FROM "{self.TEST_TABLE_NAME}"'
+            f' WHERE "{self.COL_INDEX}" IN (1, 2) ORDER BY "{self.COL_INDEX}"')
         records = self._cursor.fetchall()
         self.assertEqual(str(records[0][1]), '1990-12-01')
         self.assertEqual(str(records[1][1]), '1975-01-01')
@@ -303,10 +317,10 @@ class TestUserDML(PostgreSQLTestCase):
         """№ 1-15 Проверка невалидного значения месяца в столбе 'DataOfBirth' (13 месяц)"""
 
         invalid_data = {
-            "Index": 2,
-            "FirstName": "Error",
-            "LastName": "User",
-            "DataOfBirth": "1975-13-2"
+            self.COL_INDEX: 2,
+            self.COL_FIRST_NAME: "Error",
+            self.COL_LAST_NAME: "User",
+            self.COL_DOB: "1975-13-2"
         }
         with self.assertRaises(psycopg2.DatabaseError) as cm:
             self.db.insert_record(invalid_data)
@@ -318,7 +332,7 @@ class TestUserDML(PostgreSQLTestCase):
         """№ 1-16 Проверка TRUNCATE и DELETE без параметров"""
 
         # Шаг 3: Заполнение тестовыми данными
-        columns = ["FirstName", "LastName", "DataOfBirth"]
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [
             ('Ivan', 'Ivanov', '1990-01-01'),
             ('Petr', 'Petrov', '1985-05-12'),
@@ -337,22 +351,23 @@ class TestUserDML(PostgreSQLTestCase):
     def test_1_17_delete_where_in(self):
         """№ 1-17 Проверка DELETE с конструкцией WHERE IN"""
 
-        columns = ["FirstName", "LastName", "DataOfBirth"]
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [('Ivan', 'Ivanov', '1990-01-01'), ('Petr', 'Petrov', '1985-05-12'),
                   ('Anna', 'Sidorova', '1995-11-20')]
         self.db.insert_many(columns, values)
-        self._cursor.execute(f'SELECT "Index" FROM "{self.TEST_TABLE_NAME}"')
+        self._cursor.execute(f'SELECT "{self.COL_INDEX}" FROM "{self.TEST_TABLE_NAME}"')
         indices = [row[0] for row in self._cursor.fetchall()]
         self.assertEqual(len(indices), 3, "Таблица должна содержать 3 строки")
-        self._cursor.execute(f'DELETE FROM "{self.TEST_TABLE_NAME}" WHERE "Index" IN %s', (tuple(indices),))
-        self.assertEqual(self._cursor.rowcount, 3, "Должно быть удалено 3 записи по списку Index")
+        self._cursor.execute(f'DELETE FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_INDEX}" IN %s', (tuple(indices),))
+        self.assertEqual(self._cursor.rowcount, 3,
+                         f"Должно быть удалено 3 записи по списку {self.COL_INDEX}")
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
         self.assertEqual(self._cursor.fetchone()[0], 0, "Таблица должна быть пустой")
 
     def test_1_18_select_where_like(self):
         """№ 1-18 Проверка SELECT с конструкцией WHERE LIKE"""
 
-        columns = ["FirstName", "LastName", "DataOfBirth"]
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [
             ('Ivan', 'Ivanov', '1990-01-01'),
             ('Petr', 'Petrov', '1985-05-12'),
@@ -360,8 +375,8 @@ class TestUserDML(PostgreSQLTestCase):
         ]
         self.db.insert_many(columns, values)
         self._cursor.execute(
-            f'SELECT "FirstName", "LastName",'
-            f' "DataOfBirth" FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" LIKE \'I%%\'')
+            f'SELECT "{self.COL_FIRST_NAME}", "{self.COL_LAST_NAME}",'
+            f' "{self.COL_DOB}" FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" LIKE \'I%%\'')
         result = self._cursor.fetchall()
         self.assertEqual(len(result), 1, "Должна быть найдена ровно 1 запись")
         self.assertEqual(result[0][0], 'Ivan')
@@ -372,8 +387,8 @@ class TestUserDML(PostgreSQLTestCase):
         """№ 1-19 Проверка SELECT с конструкцией WHERE и оператора IS NULL"""
 
         check_value = ('Ivan', 'Ivanov')
-        check_columns = ("FirstName", "LastName")
-        columns = list(check_columns) + ["DataOfBirth"]
+        check_columns = (self.COL_FIRST_NAME, self.COL_LAST_NAME)
+        columns = list(check_columns) + [self.COL_DOB]
         values = [
             (check_value[0], check_value[1], None),
             ('Petr', 'Petrov', '1985-05-12'),
@@ -382,10 +397,10 @@ class TestUserDML(PostgreSQLTestCase):
         self.db.insert_many(columns, values)
         query = \
             (f'SELECT "{check_columns[0]}", "{check_columns[1]}" '
-             f'FROM "{self.TEST_TABLE_NAME}" WHERE "DataOfBirth" IS NULL')
+             f'FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_DOB}" IS NULL')
         self._cursor.execute(query)
         result = self._cursor.fetchall()
-        self.assertEqual(len(result), 1, "Должна быть найдена ровно 1 запись с NULL в дате")
+        self.assertEqual(len(result), 1, f"Должна быть найдена ровно 1 запись с NULL в {self.COL_DOB}")
         first_name, last_name = result[0]
 
         self.assertEqual(first_name, check_value[0],
@@ -396,14 +411,16 @@ class TestUserDML(PostgreSQLTestCase):
     def test_1_20_select_empty_result(self):
         """№ 1-20 Проверка SELECT, возвращающей пустой ответ"""
 
-        columns = ["FirstName", "LastName", "DataOfBirth"]
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [
             ('Ivan', 'Ivanov', None),
             ('Petr', 'Petrov', '1985-05-12'),
             ('Anna', 'Sidorova', '1995-11-20')
         ]
         self.db.insert_many(columns, values)
-        self._cursor.execute(f'SELECT "LastName" FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s', ('Anna1',))
+        self._cursor.execute(
+            f'SELECT "{self.COL_LAST_NAME}" FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s',
+            ('Anna1',))
         result = self._cursor.fetchall()
         self.assertEqual(len(result), 0,
                          "Запрос должен вернуть пустой результат для несуществующего имени")
@@ -411,7 +428,7 @@ class TestUserDML(PostgreSQLTestCase):
     def test_1_21_update_with_not_and_logic(self):
         """№ 1-21 Проверка UPDATE с конструкцией WHERE и операторов NOT, AND и ="""
 
-        columns = ["FirstName", "LastName", "DataOfBirth"]
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [
             ('Ivan', 'Ivanov', None),
             ('Petr', 'Petrov', '1985-05-12'),
@@ -420,33 +437,37 @@ class TestUserDML(PostgreSQLTestCase):
         self.db.insert_many(columns, values)
         query = f"""
             UPDATE "{self.TEST_TABLE_NAME}" 
-            SET "LastName" = %s 
-            WHERE NOT "FirstName" = %s AND NOT "LastName" = %s
+            SET "{self.COL_LAST_NAME}" = %s 
+            WHERE NOT "{self.COL_FIRST_NAME}" = %s AND NOT "{self.COL_LAST_NAME}" = %s
         """
         self._cursor.execute(query, ('NEWNAME', 'Ivan', 'Petrov'))
         self.assertEqual(self._cursor.rowcount, 1,
                          f"Ожидалось обновление 1 строки, обновлено {self._cursor.rowcount}")
-        self._cursor.execute(f'SELECT "LastName" FROM "{self.TEST_TABLE_NAME}" WHERE "FirstName" = %s', ('Anna',))
+        self._cursor.execute(
+            f'SELECT "{self.COL_LAST_NAME}" FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s',
+            ('Anna',))
         record = self._cursor.fetchone()
         self.assertIsNotNone(record)
-        self.assertEqual(record[0], 'NEWNAME', "Фамилия Анны должна была измениться на NEWNAME")
+        self.assertEqual(record[0], 'NEWNAME', f"Фамилия Анны должна была измениться на NEWNAME")
 
     def test_1_22_update_zero_rows(self):
         """№ 1-22 Проверка UPDATE, обновляющей 0 строк"""
 
-        columns = ["FirstName", "LastName", "DataOfBirth"]
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [('Ivan', 'Ivanov', None), ('Petr', 'Petrov', '1985-05-12'), ('Anna', 'Sidorova', '1995-11-20')]
         self.db.insert_many(columns, values)
-        self._cursor.execute(f'UPDATE "{self.TEST_TABLE_NAME}" SET "LastName" = %s WHERE "FirstName" = %s',
-                             ('NEWNAME', ''))
+        self._cursor.execute(
+            f'UPDATE "{self.TEST_TABLE_NAME}" SET "{self.COL_LAST_NAME}" = %s WHERE "{self.COL_FIRST_NAME}" = %s',
+            ('NEWNAME', ''))
         self.assertEqual(self._cursor.rowcount, 0, "Команда UPDATE должна вернуть 0 затронутых строк")
-        self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}" WHERE "LastName" = %s', ('NEWNAME',))
+        self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_LAST_NAME}" = %s',
+                             ('NEWNAME',))
         self.assertEqual(self._cursor.fetchone()[0], 0, "Записей с фамилией NEWNAME быть не должно")
 
     def test_1_23_delete_zero_rows(self):
         """№ 1-23 Проверка DELETE, удаляющей 0 строк"""
 
-        columns = ["FirstName", "LastName", "DataOfBirth"]
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [('Ivan', 'Ivanov', '1990-01-01'), ('Petr', 'Petrov', '1985-05-12'),
                   ('Anna', 'Sidorova', '1995-11-20')]
         self.db.insert_many(columns, values)
@@ -462,7 +483,7 @@ class TestUserDML(PostgreSQLTestCase):
             self._cursor.execute(f'TRUNCAT TABLE "{self.TEST_TABLE_NAME}"')
         self.assertEqual(cm.exception.pgcode, '42601', "Должна возникнуть ошибка синтаксиса (42601)")
         with self.assertRaises(psycopg2.InternalError) as cm_aborted:
-            self.db.insert_record({"FirstName": "Ivan", "LastName": "Ivanov"})
+            self.db.insert_record({self.COL_FIRST_NAME: "Ivan", self.COL_LAST_NAME: "Ivanov"})
         self.assertEqual(cm_aborted.exception.pgcode, '25P02',
                          "Транзакция должна быть заблокирована (код 25P02)")
         self.assertIn('current transaction is aborted', str(cm_aborted.exception).lower())
@@ -471,18 +492,19 @@ class TestUserDML(PostgreSQLTestCase):
         """№ 1-25 Проверка UPDATE с изменением даты и условием BETWEEN"""
 
         self._cursor.execute(f"""
-            INSERT INTO "{self.TEST_TABLE_NAME}" ("Index", "FirstName", "LastName", "DataOfBirth") 
-            SELECT i, '"FirstName"_' || i, '"LastName"_' || i, '1990-01-01'
+            INSERT INTO "{self.TEST_TABLE_NAME}" ("{self.COL_INDEX}", "{self.COL_FIRST_NAME}",
+             "{self.COL_LAST_NAME}", "{self.COL_DOB}") 
+            SELECT i, '"{self.COL_FIRST_NAME}"_' || i, '"{self.COL_LAST_NAME}"_' || i, '1990-01-01'
             FROM generate_series(1, 200) AS i
         """)
         self.assertEqual(self._cursor.rowcount, 200)
         self._cursor.execute(f"""
             UPDATE "{self.TEST_TABLE_NAME}" 
-            SET "DataOfBirth" = "DataOfBirth" - INTERVAL '1 year' 
-            WHERE "Index" BETWEEN 1 AND 200
+            SET "{self.COL_DOB}" = "{self.COL_DOB}" - INTERVAL '1 year' 
+            WHERE "{self.COL_INDEX}" BETWEEN 1 AND 200
         """)
         self.assertEqual(self._cursor.rowcount, 200)
-        self._cursor.execute(f'SELECT "DataOfBirth" FROM "{self.TEST_TABLE_NAME}" WHERE "Index" = 100')
+        self._cursor.execute(f'SELECT "{self.COL_DOB}" FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_INDEX}" = 100')
         result = self._cursor.fetchone()
         self.assertEqual(str(result[0]), '1989-01-01', "Дата должна уменьшиться на 1 год")
 
@@ -490,14 +512,14 @@ class TestUserDML(PostgreSQLTestCase):
         """№ 1-26 Проверка SELECT с агрегатными функциями (стабильный расчет)"""
 
         values = [
-            ('Old', 'Man', '1970-01-01'),   # 56 лет на 2026-01-01
-            ('Young', 'Girl', '2000-01-01'), # 26 лет на 2026-01-01
-            ('Middle', 'Age', '1990-01-01')  # 36 лет на 2026-01-01
+            ('Old', 'Man', '1970-01-01'),
+            ('Young', 'Girl', '2000-01-01'),
+            ('Middle', 'Age', '1990-01-01')
         ]
-        self.db.insert_many(["FirstName", "LastName", "DataOfBirth"], values)
+        self.db.insert_many([self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB], values)
         query = f"""
             SELECT COUNT(*) AS total_people, 
-                   AVG(EXTRACT(YEAR FROM AGE(TIMESTAMP '2026-01-01', "DataOfBirth"))) AS avg_age 
+                   AVG(EXTRACT(YEAR FROM AGE(TIMESTAMP '2026-01-01', "{self.COL_DOB}"))) AS avg_age 
             FROM "{self.TEST_TABLE_NAME}"
         """
         self._cursor.execute(query)
@@ -511,20 +533,22 @@ class TestUserDML(PostgreSQLTestCase):
 
     def test_1_27n_insert_null_into_not_null_column(self):
         """№ 1-27n Проверка INSERT (вставка Null в NOT NULL столбец FirstName)"""
-        invalid_data = {"FirstName": None, "LastName": "Sidorova"}
+
+        invalid_data = {self.COL_FIRST_NAME: None, self.COL_LAST_NAME: "Sidorova"}
         with self.assertRaises(psycopg2.IntegrityError) as cm:
             self.db.insert_record(invalid_data)
-        self.assertEqual(cm.exception.pgcode, '23502', "Должна возникнуть ошибка NOT NULL (23502)")
+        self.assertEqual(cm.exception.pgcode, '23502',
+                         f"Должна возникнуть ошибка NOT NULL (23502) для {self.COL_FIRST_NAME}")
 
     def test_1_28_explicit_rollback_verification(self):
         """№ 1-28 Проверка ROLLBACK (физическая отмена изменений)"""
 
-        self.db.insert_record({"FirstName": "Initial", "LastName": "User"})
+        self.db.insert_record({self.COL_FIRST_NAME: "Initial", self.COL_LAST_NAME: "User"})
         self._connection.commit()
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
         initial_count = self._cursor.fetchone()[0]
         self._cursor.execute(f'TRUNCATE TABLE "{self.TEST_TABLE_NAME}"')
-        self.db.insert_record({"FirstName": "Masha", "LastName": "Sidorova"})
+        self.db.insert_record({self.COL_FIRST_NAME: "Masha", self.COL_LAST_NAME: "Sidorova"})
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
         self.assertEqual(self._cursor.fetchone()[0], 1)
         self._connection.rollback()
