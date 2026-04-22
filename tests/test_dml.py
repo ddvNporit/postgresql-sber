@@ -6,7 +6,7 @@ from db.helpers import DbActions
 
 
 class TestUserDML(PostgreSQLTestCase):
-    TEST_TABLE_NAME = 'People'
+    TEST_TABLE_NAME = "People"
     COL_INDEX = "Index"
     COL_FIRST_NAME = "FirstName"
     COL_LAST_NAME = "LastName"

@@ -7,6 +7,7 @@ load_dotenv()
 @dataclass
 class DBConfig:
     """Класс для хранения конфигурации подключения к PostgreSQL"""
+
     host: str
     database: str
     user: str
@@ -16,6 +17,7 @@ class DBConfig:
     @classmethod
     def from_env(cls):
         """Фабричный метод для создания конфига из .env"""
+
         try:
             return cls(
                 host=os.getenv('DB_HOST', 'localhost'),

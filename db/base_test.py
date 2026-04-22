@@ -16,6 +16,7 @@ class PostgreSQLTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Установка соединения один раз на весь класс тестов"""
+
         cls._config = cls._load_config()
         try:
             cls._connection = psycopg2.connect(
@@ -26,7 +27,7 @@ class PostgreSQLTestCase(unittest.TestCase):
                 port=cls._config.port
             )
             cls._cursor = cls._connection.cursor()
-            cls._verify_table_exists()  # Проверяем таблицу перед стартом
+            cls._verify_table_exists()
         except Exception as e:
             print(f"Ошибка подключения или инициализации: {e}")
             sys.exit(1)
@@ -34,6 +35,7 @@ class PostgreSQLTestCase(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         """Закрытие соединений"""
+
         if cls._cursor:
             cls._cursor.close()
         if cls._connection:
@@ -41,18 +43,21 @@ class PostgreSQLTestCase(unittest.TestCase):
 
     def setUp(self):
         """Подготовка перед каждым тестом: изоляция и очистка"""
+
         self._connection.rollback()
         self._connection.autocommit = False
         self._cursor.execute(f'TRUNCATE TABLE "{self.TEST_TABLE_NAME}" RESTART IDENTITY CASCADE')
 
     def tearDown(self):
         """Откат транзакции после теста"""
+
         if self._connection and not self._connection.closed:
             self._connection.rollback()
 
     @classmethod
     def _load_config(cls) -> DBConfig:
         """Логика загрузки конфигурации"""
+
         try:
             return DBConfig(
                 host=os.getenv('DB_HOST', 'localhost'),
@@ -68,6 +73,7 @@ class PostgreSQLTestCase(unittest.TestCase):
     @classmethod
     def _verify_table_exists(cls):
         """Проверка структуры перед началом тестов"""
+
         query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s);"
         cls._cursor.execute(query, (cls.TEST_TABLE_NAME,))
         if not cls._cursor.fetchone()[0]:
@@ -76,15 +82,9 @@ class PostgreSQLTestCase(unittest.TestCase):
 
     def execute_query(self, query: str, params: tuple = None):
         """Выполнение запроса и возврат одной строки (или None)"""
+
         self._cursor.execute(query, params)
         try:
             return self._cursor.fetchone()
         except psycopg2.ProgrammingError:
             return None
-
-    def print_report(self, info_message: str):
-        """Кастомный вывод результата в консоль"""
-        print(f"\n[REPORT] Test: {self._testMethodName}")
-        print(f"Target Table: {self.TEST_TABLE_NAME}")
-        print(f"Message: {info_message}")
-        print("-" * 30)
