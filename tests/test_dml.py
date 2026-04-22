@@ -431,7 +431,7 @@ class TestUserDML(PostgreSQLTestCase):
         self.assertIsNotNone(record)
         self.assertEqual(record[0], 'NEWNAME', "Фамилия Анны должна была измениться на NEWNAME")
 
-    def test_01_22_update_zero_rows(self):
+    def test_1_22_update_zero_rows(self):
         """№ 1-22 Проверка UPDATE, обновляющей 0 строк"""
 
         columns = ["FirstName", "LastName", "DataOfBirth"]
@@ -443,7 +443,7 @@ class TestUserDML(PostgreSQLTestCase):
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}" WHERE "LastName" = %s', ('NEWNAME',))
         self.assertEqual(self._cursor.fetchone()[0], 0, "Записей с фамилией NEWNAME быть не должно")
 
-    def test_01_23_delete_zero_rows(self):
+    def test_1_23_delete_zero_rows(self):
         """№ 1-23 Проверка DELETE, удаляющей 0 строк"""
 
         columns = ["FirstName", "LastName", "DataOfBirth"]
@@ -455,7 +455,7 @@ class TestUserDML(PostgreSQLTestCase):
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
         self.assertEqual(self._cursor.fetchone()[0], 3, "В таблице должно остаться 3 строки")
 
-    def test_01_24_aborted_transaction_behavior(self):
+    def test_1_24_aborted_transaction_behavior(self):
         """№ 1-24 Проверка битой транзакции (ошибка в синтаксисе)"""
 
         with self.assertRaises(psycopg2.ProgrammingError) as cm:
@@ -466,3 +466,68 @@ class TestUserDML(PostgreSQLTestCase):
         self.assertEqual(cm_aborted.exception.pgcode, '25P02',
                          "Транзакция должна быть заблокирована (код 25P02)")
         self.assertIn('current transaction is aborted', str(cm_aborted.exception).lower())
+
+    def test_1_25_update_with_interval_and_between(self):
+        """№ 1-25 Проверка UPDATE с изменением даты и условием BETWEEN"""
+
+        self._cursor.execute(f"""
+            INSERT INTO "{self.TEST_TABLE_NAME}" ("Index", "FirstName", "LastName", "DataOfBirth") 
+            SELECT i, '"FirstName"_' || i, '"LastName"_' || i, '1990-01-01'
+            FROM generate_series(1, 200) AS i
+        """)
+        self.assertEqual(self._cursor.rowcount, 200)
+        self._cursor.execute(f"""
+            UPDATE "{self.TEST_TABLE_NAME}" 
+            SET "DataOfBirth" = "DataOfBirth" - INTERVAL '1 year' 
+            WHERE "Index" BETWEEN 1 AND 200
+        """)
+        self.assertEqual(self._cursor.rowcount, 200)
+        self._cursor.execute(f'SELECT "DataOfBirth" FROM "{self.TEST_TABLE_NAME}" WHERE "Index" = 100')
+        result = self._cursor.fetchone()
+        self.assertEqual(str(result[0]), '1989-01-01', "Дата должна уменьшиться на 1 год")
+
+    def test_1_26_aggregate_functions_count_avg(self):
+        """№ 1-26 Проверка SELECT с агрегатными функциями (стабильный расчет)"""
+
+        values = [
+            ('Old', 'Man', '1970-01-01'),   # 56 лет на 2026-01-01
+            ('Young', 'Girl', '2000-01-01'), # 26 лет на 2026-01-01
+            ('Middle', 'Age', '1990-01-01')  # 36 лет на 2026-01-01
+        ]
+        self.db.insert_many(["FirstName", "LastName", "DataOfBirth"], values)
+        query = f"""
+            SELECT COUNT(*) AS total_people, 
+                   AVG(EXTRACT(YEAR FROM AGE(TIMESTAMP '2026-01-01', "DataOfBirth"))) AS avg_age 
+            FROM "{self.TEST_TABLE_NAME}"
+        """
+        self._cursor.execute(query)
+        result = self._cursor.fetchone()
+        self.assertEqual(result[0], 3)
+        expected_avg = 39.33
+        actual_avg = float(result[1])
+
+        self.assertAlmostEqual(actual_avg, expected_avg, places=2,
+                               msg=f"Средний возраст {actual_avg} не совпал с {expected_avg}")
+
+    def test_1_27n_insert_null_into_not_null_column(self):
+        """№ 1-27n Проверка INSERT (вставка Null в NOT NULL столбец FirstName)"""
+        invalid_data = {"FirstName": None, "LastName": "Sidorova"}
+        with self.assertRaises(psycopg2.IntegrityError) as cm:
+            self.db.insert_record(invalid_data)
+        self.assertEqual(cm.exception.pgcode, '23502', "Должна возникнуть ошибка NOT NULL (23502)")
+
+    def test_1_28_explicit_rollback_verification(self):
+        """№ 1-28 Проверка ROLLBACK (физическая отмена изменений)"""
+
+        self.db.insert_record({"FirstName": "Initial", "LastName": "User"})
+        self._connection.commit()
+        self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
+        initial_count = self._cursor.fetchone()[0]
+        self._cursor.execute(f'TRUNCATE TABLE "{self.TEST_TABLE_NAME}"')
+        self.db.insert_record({"FirstName": "Masha", "LastName": "Sidorova"})
+        self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
+        self.assertEqual(self._cursor.fetchone()[0], 1)
+        self._connection.rollback()
+        self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
+        final_count = self._cursor.fetchone()[0]
+        self.assertEqual(final_count, initial_count, "Данные не восстановились после ROLLBACK")
