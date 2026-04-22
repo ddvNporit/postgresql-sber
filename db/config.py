@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 
+
 @dataclass
 class DBConfig:
     """Класс для хранения конфигурации подключения к PostgreSQL"""

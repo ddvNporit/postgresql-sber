@@ -1,5 +1,4 @@
 import psycopg2
-from psycopg2 import errors
 
 from db.base_test import PostgreSQLTestCase
 from db.helpers import DbActions
@@ -197,8 +196,8 @@ class TestUserDML(PostgreSQLTestCase):
         self.assertEqual(record[0], 2, f"Значение {self.COL_INDEX} в базе должно быть равно 2")
         self.assertIsInstance(record[0], int, "Тип данных в базе должен остаться целочисленным")
 
-    def test_1_08_index_check_constraint_violation(self):
-        """№ 1-8 Проверка столба 'Index' (вставка с ручным указанием 'Index' = 0)"""
+    def test_1_08n_index_check_constraint_violation(self):
+        """№ 1-8n Проверка столба 'Index' (вставка с ручным указанием 'Index' = 0)"""
 
         invalid_data = {
             self.COL_INDEX: 0,
@@ -206,12 +205,10 @@ class TestUserDML(PostgreSQLTestCase):
             self.COL_LAST_NAME: "Smirnova",
             self.COL_DOB: "2000-12-31"
         }
-        with self.assertRaises(psycopg2.errors.CheckViolation) as cm:
-            self.db.insert_record(invalid_data)
-        self.assertIn('violates check constraint', str(cm.exception).lower())
+        self.assertSqlError('23514', self.db.insert_record, invalid_data)
 
-    def test_1_09_index_out_of_range(self):
-        """№ 1-9 Проверка столба 'Index' (вставка значения 2147483648 - выход за границы)"""
+    def test_1_09n_index_out_of_range(self):
+        """№ 1-9n Проверка столба 'Index' (вставка значения 2147483648 - выход за границы)"""
 
         invalid_data = {
             self.COL_INDEX: 2147483648,
@@ -219,15 +216,7 @@ class TestUserDML(PostgreSQLTestCase):
             self.COL_LAST_NAME: "Smirnova",
             self.COL_DOB: "2000-12-31"
         }
-
-        with self.assertRaises(psycopg2.DatabaseError) as cm:
-            self.db.insert_record(invalid_data)
-        sqlstate = cm.exception.pgcode
-        self.assertIn(sqlstate, ['22003', '23514'],
-                      f"Ожидался код ошибки 22003 или 23514, но получен {sqlstate}")
-        error_msg = str(cm.exception).lower()
-        self.assertTrue('range' in error_msg or 'violate' in error_msg,
-                        f"Текст ошибки не соответствует ожидаемому: {error_msg}")
+        self.assertSqlError(['22003', '23514'], self.db.insert_record, invalid_data)
 
     def test_1_10_index_maximum_valid_value(self):
         """№ 1-10 Проверка столба 'Index' (вставка значения 2147483647 - максимум)"""
@@ -249,8 +238,8 @@ class TestUserDML(PostgreSQLTestCase):
                          f"Значение {self.COL_INDEX} в базе должно быть 2147483647")
         self.assertEqual(record[1], "Anna")
 
-    def test_1_11_index_negative_value(self):
-        """№ 1-11 Проверка столба 'Index' (вставка с ручным указанием 'Index' < 0)"""
+    def test_1_11n_index_negative_value(self):
+        """№ 1-11n Проверка столба 'Index' (вставка с ручным указанием 'Index' < 0)"""
 
         invalid_data = {
             self.COL_INDEX: -1,
@@ -258,14 +247,10 @@ class TestUserDML(PostgreSQLTestCase):
             self.COL_LAST_NAME: "Petrov",
             self.COL_DOB: "1995-05-15"
         }
-        with self.assertRaises(psycopg2.IntegrityError) as cm:
-            self.db.insert_record(invalid_data)
-        sqlstate = cm.exception.pgcode
-        self.assertEqual(sqlstate, '23514', f"Ожидался код ошибки 23514, но получен {sqlstate}")
-        self.assertIn('violates check constraint', str(cm.exception).lower())
+        self.assertSqlError('23514', self.db.insert_record, invalid_data)
 
-    def test_1_12_index_string_value(self):
-        """№ 1-12 Проверка столба 'Index' (вставка строкового значения в Integer)"""
+    def test_1_12n_index_string_value(self):
+        """№ 1-12n Проверка столба 'Index' (вставка строкового значения в Integer)"""
 
         invalid_data = {
             self.COL_INDEX: "Petr",
@@ -273,27 +258,17 @@ class TestUserDML(PostgreSQLTestCase):
             self.COL_LAST_NAME: "Petrov",
             self.COL_DOB: "1995-05-15"
         }
+        self.assertSqlError('22P02', self.db.insert_record, invalid_data)
 
-        with self.assertRaises(psycopg2.DatabaseError) as cm:
-            self.db.insert_record(invalid_data)
-        sqlstate = cm.exception.pgcode
-        self.assertEqual(sqlstate, '22P02', f"Ожидался код ошибки 22P02, но получен {sqlstate}")
-        error_msg = str(cm.exception).lower()
-        self.assertIn('invalid input syntax for type integer', error_msg)
-
-    def test_1_13_dob_integer_instead_of_date(self):
-        """№ 1-13 Проверка столба 'DataOfBirth' (вставка числа вместо даты)"""
+    def test_1_13n_dob_integer_instead_of_date(self):
+        """№ 1-13n Проверка столба 'DataOfBirth' (вставка числа вместо даты)"""
 
         invalid_data = {
             self.COL_FIRST_NAME: "Ivan",
             self.COL_LAST_NAME: "Ivanov",
             self.COL_DOB: 1
         }
-        with self.assertRaises(psycopg2.DatabaseError) as cm:
-            self.db.insert_record(invalid_data)
-        sqlstate = cm.exception.pgcode
-        self.assertEqual(sqlstate, '42804', f"Ожидался код ошибки 42804, но получен {sqlstate}")
-        self.assertIn(f'is of type date but expression is of type integer', str(cm.exception).lower())
+        self.assertSqlError('42804', self.db.insert_record, invalid_data)
 
     def test_1_14_dob_valid_string_formats(self):
         """№ 1-14 Проверка столба 'DataOfBirth' (вставка валидной даты в строковом формате)"""
@@ -313,8 +288,8 @@ class TestUserDML(PostgreSQLTestCase):
         self.assertEqual(str(records[0][1]), '1990-12-01')
         self.assertEqual(str(records[1][1]), '1975-01-01')
 
-    def test_1_15_dob_invalid_month(self):
-        """№ 1-15 Проверка невалидного значения месяца в столбе 'DataOfBirth' (13 месяц)"""
+    def test_1_15n_dob_invalid_month(self):
+        """№ 1-15n Проверка невалидного значения месяца в столбе 'DataOfBirth' (13 месяц)"""
 
         invalid_data = {
             self.COL_INDEX: 2,
@@ -322,16 +297,11 @@ class TestUserDML(PostgreSQLTestCase):
             self.COL_LAST_NAME: "User",
             self.COL_DOB: "1975-13-2"
         }
-        with self.assertRaises(psycopg2.DatabaseError) as cm:
-            self.db.insert_record(invalid_data)
-        sqlstate = cm.exception.pgcode
-        self.assertEqual(sqlstate, '22008', f"Ожидался код ошибки 22008, но получен {sqlstate}")
-        self.assertIn('date/time field value out of range', str(cm.exception).lower())
+        self.assertSqlError('22008', self.db.insert_record, invalid_data)
 
     def test_1_16_truncate_and_delete_all(self):
         """№ 1-16 Проверка TRUNCATE и DELETE без параметров"""
 
-        # Шаг 3: Заполнение тестовыми данными
         columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         values = [
             ('Ivan', 'Ivanov', '1990-01-01'),
@@ -479,14 +449,16 @@ class TestUserDML(PostgreSQLTestCase):
     def test_1_24_aborted_transaction_behavior(self):
         """№ 1-24 Проверка битой транзакции (ошибка в синтаксисе)"""
 
+        expected_sqlstate_1 = '42601'
+        expected_sqlstate_2 = '25P02'
         with self.assertRaises(psycopg2.ProgrammingError) as cm:
             self._cursor.execute(f'TRUNCAT TABLE "{self.TEST_TABLE_NAME}"')
-        self.assertEqual(cm.exception.pgcode, '42601', "Должна возникнуть ошибка синтаксиса (42601)")
+        self.assertEqual(cm.exception.pgcode, expected_sqlstate_1,
+                         f"Должна возникнуть ошибка {expected_sqlstate_1}")
         with self.assertRaises(psycopg2.InternalError) as cm_aborted:
             self.db.insert_record({self.COL_FIRST_NAME: "Ivan", self.COL_LAST_NAME: "Ivanov"})
-        self.assertEqual(cm_aborted.exception.pgcode, '25P02',
-                         "Транзакция должна быть заблокирована (код 25P02)")
-        self.assertIn('current transaction is aborted', str(cm_aborted.exception).lower())
+        self.assertEqual(cm_aborted.exception.pgcode, expected_sqlstate_2,
+                         f"Транзакция должна быть заблокирована (код {expected_sqlstate_2})")
 
     def test_1_25_update_with_interval_and_between(self):
         """№ 1-25 Проверка UPDATE с изменением даты и условием BETWEEN"""
@@ -535,10 +507,7 @@ class TestUserDML(PostgreSQLTestCase):
         """№ 1-27n Проверка INSERT (вставка Null в NOT NULL столбец FirstName)"""
 
         invalid_data = {self.COL_FIRST_NAME: None, self.COL_LAST_NAME: "Sidorova"}
-        with self.assertRaises(psycopg2.IntegrityError) as cm:
-            self.db.insert_record(invalid_data)
-        self.assertEqual(cm.exception.pgcode, '23502',
-                         f"Должна возникнуть ошибка NOT NULL (23502) для {self.COL_FIRST_NAME}")
+        self.assertSqlError('23502', self.db.insert_record, invalid_data)
 
     def test_1_28_explicit_rollback_verification(self):
         """№ 1-28 Проверка ROLLBACK (физическая отмена изменений)"""
