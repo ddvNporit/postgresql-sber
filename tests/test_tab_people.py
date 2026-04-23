@@ -52,33 +52,25 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_00_insert_and_verify_properties(self):
         """№ 1-0 Проверка свойств таблицы 'People'"""
 
-        user_data = {
-            self.COL_FIRST_NAME: "Ivan1",
-            self.COL_LAST_NAME: "Ivanov1",
-            self.COL_DOB: "1989-05-15"
-        }
+        user_data = self.get_test_data()[0]
         self.db.insert_record(user_data)
         cols_to_check = [self.COL_INDEX, self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         res = self.db.get_column_types(cols_to_check, user_data)
 
         self.assertIsNotNone(res)
         self.assertRegex(res[0], r'^\d+: integer$')
-        self.assertEqual(res[1], f"Ivan1: character varying")
-        self.assertEqual(res[2], f"Ivanov1: character varying")
-        self.assertEqual(res[3], "1989-05-15: date")
+        self.assertEqual(res[1], f"Ivan: character varying")
+        self.assertEqual(res[2], f"Ivanov: character varying")
+        self.assertEqual(res[3], "1990-01-01: date")
 
         year_res = (self.db.get_extracted_part
-                    ("YEAR", self.COL_DOB, self.COL_FIRST_NAME, "Ivan1"))
-        self.assertEqual(int(year_res[0]), 1989)
+                    ("YEAR", self.COL_DOB, self.COL_FIRST_NAME, "Ivan"))
+        self.assertEqual(int(year_res[0]), 1990)
 
     def test_1_01_insert_full_record_success(self):
         """№ 1-1: Проверка INSERT (успешная вставка полной записи в таблицу 'People')"""
 
-        user_data = {
-            self.COL_FIRST_NAME: "Ivan",
-            self.COL_LAST_NAME: "Ivanov",
-            self.COL_DOB: "1990-01-01"
-        }
+        user_data = self.get_test_data()[0]
         self.db.insert_record(user_data)
         self.assertEqual(self._cursor.rowcount, 1, "Команда INSERT должна вернуть 1 измененную строку")
         sql = \
@@ -98,7 +90,7 @@ class TestPeopleDML(PostgreSQLTestCase):
         """№ 1-2 Проверка INSERT (массовая вставка нескольких записей)"""
 
         records = self.get_test_data()
-        cols, values = self.to_many(records)  # Разбираем для удобства обращения к values
+        cols, values = self.to_many(records)
         rows_affected = self.db.insert_many(cols, values)
         self.assertEqual(rows_affected, 3, "Должно быть вставлено 3 записи из генератора")
         sql_count = f"""
