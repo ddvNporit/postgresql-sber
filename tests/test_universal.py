@@ -39,7 +39,7 @@ class TestUniversalDML(PostgreSQLTestCase):
         # --- 1. INSERT ---
         rows_inserted = self.db.insert_record(self.payload)
         self.assertEqual(rows_inserted, 1, "Ошибка при выполнении INSERT")
-        print(f"✅ INSERT: Запись успешно добавлена в '{self.TEST_TABLE_NAME}'")
+        print(f"\n✅ INSERT: Запись успешно добавлена в '{self.TEST_TABLE_NAME}'")
 
         # --- 2. SELECT ---
         filter_col = list(self.payload.keys())[0]

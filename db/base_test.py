@@ -38,29 +38,33 @@ class PostgreSQLTestCase(unittest.TestCase):
 
     @classmethod
     def _load_config(cls) -> DBConfig:
+        if os.getenv("DB_NAME"):
+            return DBConfig.from_env()
         env_path = os.getenv("ENV_FILE")
         if not env_path:
             for i, arg in enumerate(sys.argv):
                 if arg == "-env" and i + 1 < len(sys.argv):
-                    env_path = sys.argv[i + 1]
+                    env_path = sys.argv[i + 1].strip("'").strip('"')
                     break
-
         if env_path:
-            env_path = env_path.strip("'").strip('"')
             if os.path.exists(env_path):
                 print(f"--- Используется конфигурация: {env_path} ---")
                 load_dotenv(dotenv_path=env_path, override=True)
             else:
-                print(f"Ошибка: Файл {env_path} не найден.")
+                print(f"Ошибка: Указанный файл конфигурации '{env_path}' не найден.")
                 sys.exit(1)
         else:
-            print(f"--- Используется конфигурация по умолчанию .env ---")
-            load_dotenv()
+            if os.path.exists('.env'):
+                print("--- Используется конфигурация по умолчанию .env ---")
+                load_dotenv(override=True)
+            else:
+                print("Ошибка: Нет конфигурации (.env не найден и ENV_FILE/ -env не указаны)")
+                sys.exit(1)
 
         try:
             return DBConfig.from_env()
         except Exception as e:
-            print(f"Ошибка конфигурации: {e}")
+            print(f"Ошибка парсинга конфигурации: {e}")
             sys.exit(1)
 
     @classmethod
