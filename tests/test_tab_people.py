@@ -4,13 +4,17 @@ author: Dmitry Denisov
 GitHub: https://github.com/ddvNporit/postgresql-sber
 Email: dima.nporit@gmail.com
 """
+import unittest
 
 import psycopg2
+
 from db.base_test import PostgreSQLTestCase
 from db.helpers import DbActions
 
 
-class TestUserDML(PostgreSQLTestCase):
+class TestPeopleDML(PostgreSQLTestCase):
+    db: DbActions = None
+
     @property
     def COL_INDEX(self):
         return self.COLUMNS['INDEX']
@@ -27,9 +31,23 @@ class TestUserDML(PostgreSQLTestCase):
     def COL_DOB(self):
         return self.COLUMNS['DOB']
 
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.db = DbActions(cls._cursor, cls.TEST_TABLE_NAME)
+
+        required_roles = ['INDEX', 'FNAME', 'LNAME', 'DOB']
+        missing = [r for r in required_roles if cls.COLUMNS.get(r) is None]
+
+        if missing or cls.TEST_TABLE_NAME != "People":
+            raise unittest.SkipTest(
+                f"Класс TestPeopleDML пропущен: таблица '{cls.TEST_TABLE_NAME}' "
+                f"не соответствует структуре People"
+            )
+
     def setUp(self):
         super().setUp()
-        self.db = DbActions(self._cursor, self.TEST_TABLE_NAME)
+        self.db.cursor = self._cursor
 
     def test_1_00_insert_and_verify_properties(self):
         """№ 1-0 Проверка свойств таблицы 'People'"""
