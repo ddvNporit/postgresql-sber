@@ -13,11 +13,12 @@ class PostgreSQLTestCase(unittest.TestCase):
     _cursor = None
     _config = None
     TEST_TABLE_NAME = None
+    COLUMNS = {'INDEX': None, 'FNAME': None, 'LNAME': None, 'DOB': None}
+    table_schema = []
 
     @classmethod
     def setUpClass(cls):
         """Установка соединения один раз на весь класс тестов"""
-
         cls._config = cls._load_config()
         cls.TEST_TABLE_NAME = cls._config.default_table
 
@@ -30,15 +31,17 @@ class PostgreSQLTestCase(unittest.TestCase):
                 port=cls._config.port
             )
             cls._cursor = cls._connection.cursor()
+
+            # ВАЖНО: Сначала проверяем существование, потом тянем метаданные
             cls._verify_table_exists()
+            cls._fetch_table_metadata()  # Используем только этот универсальный метод
+
         except Exception as e:
             print(f"Ошибка подключения или инициализации: {e}")
             sys.exit(1)
 
     @classmethod
     def _load_config(cls) -> DBConfig:
-        """Логика загрузки конфигурации"""
-
         env_path = os.getenv("ENV_FILE")
         if not env_path:
             for i, arg in enumerate(sys.argv):
@@ -66,39 +69,88 @@ class PostgreSQLTestCase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        """Закрытие соединений"""
-
         if cls._cursor:
             cls._cursor.close()
         if cls._connection:
             cls._connection.close()
 
     def setUp(self):
-        """Подготовка перед каждым тестом: изоляция и очистка"""
-
+        """Очистка таблицы перед каждым тестом"""
         self._connection.rollback()
-        self._connection.autocommit = False
+        # Кавычки вокруг TEST_TABLE_NAME критически важны для "People"
         self._cursor.execute(f'TRUNCATE TABLE "{self.TEST_TABLE_NAME}" RESTART IDENTITY CASCADE')
+        self._connection.commit()
 
     def tearDown(self):
-        """Откат транзакции после теста"""
-
         if self._connection and not self._connection.closed:
             self._connection.rollback()
 
     @classmethod
     def _verify_table_exists(cls):
-        """Проверка структуры перед началом тестов"""
-
-        query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s);"
-        cls._cursor.execute(query, (cls.TEST_TABLE_NAME,))
+        """Проверка существования таблицы с учетом регистра"""
+        query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s OR table_name = LOWER(%s));"
+        cls._cursor.execute(query, (cls.TEST_TABLE_NAME, cls.TEST_TABLE_NAME))
         if not cls._cursor.fetchone()[0]:
-            print(f"Table Error: Таблица '{cls.TEST_TABLE_NAME}' не найдена в БД '{cls._config.database}'.")
+            print(f"Table Error: Таблица '{cls.TEST_TABLE_NAME}' не найдена.")
             sys.exit(1)
 
-    def execute_query(self, query: str, params: tuple = None):
-        """Выполнение запроса и возврат одной строки (или None)"""
+    @classmethod
+    def _fetch_table_metadata(cls):
+        """Универсальное получение структуры и ролей"""
+        query = """
+            SELECT column_name, data_type, is_nullable, character_maximum_length, column_default
+            FROM information_schema.columns 
+            WHERE table_name = %s OR table_name = LOWER(%s)
+            ORDER BY ordinal_position;
+        """
+        cls._cursor.execute(query, (cls.TEST_TABLE_NAME, cls.TEST_TABLE_NAME))
+        rows = cls._cursor.fetchall()
 
+        if not rows:
+            print(f"Metadata Error: Столбцы для '{cls.TEST_TABLE_NAME}' не найдены.")
+            return
+
+        # 1. Заполняем схему
+        cls.table_schema = [
+            {
+                'name': row[0],
+                'type': row[1],
+                'nullable': row[2] == 'YES',
+                'max_len': row[3],
+                'has_default': row[4] is not None
+            } for row in rows
+        ]
+
+        # 2. Определяем роли для обратной совместимости (People)
+        cls.COLUMNS = {'INDEX': None, 'FNAME': None, 'LNAME': None, 'DOB': None}
+        for col in cls.table_schema:
+            name, dtype = col['name'], col['type'].lower()
+            if ('int' in dtype or 'serial' in dtype) and not cls.COLUMNS['INDEX']:
+                cls.COLUMNS['INDEX'] = name
+            elif 'date' in dtype and not cls.COLUMNS['DOB']:
+                cls.COLUMNS['DOB'] = name
+            elif 'char' in dtype or 'text' in dtype:
+                if not cls.COLUMNS['FNAME']:
+                    cls.COLUMNS['FNAME'] = name
+                elif not cls.COLUMNS['LNAME']:
+                    cls.COLUMNS['LNAME'] = name
+
+    @staticmethod
+    def generate_test_value(col: dict):
+        """Генерирует валидное значение для столбца"""
+        t = col['type'].lower()
+        if 'int' in t or 'serial' in t:
+            return 100
+        if 'char' in t or 'text' in t:
+            length = col['max_len'] or 10
+            return "TestData"[:length]
+        if 'date' in t:
+            return "2000-01-01"
+        if 'bool' in t:
+            return True
+        return None
+
+    def execute_query(self, query: str, params: tuple = None):
         self._cursor.execute(query, params)
         try:
             return self._cursor.fetchone()
@@ -106,15 +158,8 @@ class PostgreSQLTestCase(unittest.TestCase):
             return None
 
     def assertSqlError(self, expected_codes, func, *args, **kwargs):
-        """
-        Проверка, что БД вернула один из ожидаемых кодов ошибки.
-        """
         if isinstance(expected_codes, str):
             expected_codes = [expected_codes]
         with self.assertRaises(psycopg2.Error) as cm:
             func(*args, **kwargs)
-        actual_code = cm.exception.pgcode
-        self.assertIn(
-            actual_code, expected_codes,
-            f"Ожидался один из кодов {expected_codes}, но получен {actual_code}. Сообщение: {cm.exception}"
-        )
+        self.assertIn(cm.exception.pgcode, expected_codes)

@@ -11,11 +11,21 @@ from db.helpers import DbActions
 
 
 class TestUserDML(PostgreSQLTestCase):
-    TEST_TABLE_NAME = "People"
-    COL_INDEX = "Index"
-    COL_FIRST_NAME = "FirstName"
-    COL_LAST_NAME = "LastName"
-    COL_DOB = "DataOfBirth"
+    @property
+    def COL_INDEX(self):
+        return self.COLUMNS['INDEX']
+
+    @property
+    def COL_FIRST_NAME(self):
+        return self.COLUMNS['FNAME']
+
+    @property
+    def COL_LAST_NAME(self):
+        return self.COLUMNS['LNAME']
+
+    @property
+    def COL_DOB(self):
+        return self.COLUMNS['DOB']
 
     def setUp(self):
         super().setUp()
@@ -41,7 +51,8 @@ class TestUserDML(PostgreSQLTestCase):
         self.assertEqual(res[2], f"Ivanov1: character varying")
         self.assertEqual(res[3], "1989-05-15: date")
 
-        year_res = self.db.get_extracted_part("YEAR", self.COL_DOB, self.COL_FIRST_NAME, "Ivan1")
+        year_res = (self.db.get_extracted_part
+                    ("YEAR", self.COL_DOB, self.COL_FIRST_NAME, "Ivan1"))
         self.assertEqual(int(year_res[0]), 1989)
 
     def test_1_01_insert_full_record_success(self):
