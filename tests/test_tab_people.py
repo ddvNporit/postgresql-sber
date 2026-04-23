@@ -123,26 +123,18 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_03_insert_min_fields(self):
         """№ 1-3 Проверка INSERT (вставка записи с минимально необходимым набором полей)"""
 
-        user_data = {
-            self.COL_FIRST_NAME: "Masha",
-            self.COL_LAST_NAME: "Sidorova"
-        }
+        user_data = self.get_test_data(custom_fname="Masha", with_null_dob=True)[0]
         rows_affected = self.db.insert_record(user_data)
         self.assertEqual(rows_affected, 1, "Команда INSERT должна вернуть 1 строку")
-        sql_select = \
-            f'SELECT * FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s AND "{self.COL_LAST_NAME}" = %s'
-        record = (self.execute_query
-                  (sql_select, (user_data[self.COL_FIRST_NAME], user_data[self.COL_LAST_NAME])))
+        sql_select = (f'SELECT * FROM "{self.TEST_TABLE_NAME}" '
+                      f'WHERE "{self.COL_FIRST_NAME}" = %s AND "{self.COL_LAST_NAME}" = %s')
+        record = self.execute_query(sql_select, (user_data[self.COL_FIRST_NAME], user_data[self.COL_LAST_NAME]))
         self.assertIsNotNone(record, "Запись не найдена в таблице")
         self.assertEqual(record[1], user_data[self.COL_FIRST_NAME])
         self.assertEqual(record[2], user_data[self.COL_LAST_NAME])
         self.assertIsNone(record[3], f"Поле {self.COL_DOB} должно содержать NULL")
-        sql_null_check = \
-            f'SELECT ("{self.COL_DOB}" IS NULL) FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s'
-        null_res = self.execute_query(sql_null_check, (user_data[self.COL_FIRST_NAME],))
-        self.assertTrue(null_res[0], "Запрос IS NULL должен вернуть True (t)")
         self.assertIsNotNone(record[0], f"Поле {self.COL_INDEX} не должно быть NULL")
-        self.assertIsInstance(record[0], int, f"Поле {self.COL_INDEX} должно быть числовым (Serial)")
+        self.assertIsInstance(record[0], int, f"Поле {self.COL_INDEX} должно быть числовым")
 
     def test_1_04_select_all_records(self):
         """№ 1-4: Проверка SELECT * (возврат всех записей таблицы 'People')"""
