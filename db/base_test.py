@@ -1,10 +1,8 @@
 import os
 import sys
 import unittest
-
 import psycopg2
 from dotenv import load_dotenv
-
 from db.config import DBConfig
 
 
@@ -31,10 +29,8 @@ class PostgreSQLTestCase(unittest.TestCase):
                 port=cls._config.port
             )
             cls._cursor = cls._connection.cursor()
-
-            # ВАЖНО: Сначала проверяем существование, потом тянем метаданные
             cls._verify_table_exists()
-            cls._fetch_table_metadata()  # Используем только этот универсальный метод
+            cls._fetch_table_metadata()
 
         except Exception as e:
             print(f"Ошибка подключения или инициализации: {e}")
@@ -76,8 +72,8 @@ class PostgreSQLTestCase(unittest.TestCase):
 
     def setUp(self):
         """Очистка таблицы перед каждым тестом"""
+
         self._connection.rollback()
-        # Кавычки вокруг TEST_TABLE_NAME критически важны для "People"
         self._cursor.execute(f'TRUNCATE TABLE "{self.TEST_TABLE_NAME}" RESTART IDENTITY CASCADE')
         self._connection.commit()
 
@@ -88,6 +84,7 @@ class PostgreSQLTestCase(unittest.TestCase):
     @classmethod
     def _verify_table_exists(cls):
         """Проверка существования таблицы с учетом регистра"""
+
         query = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s OR table_name = LOWER(%s));"
         cls._cursor.execute(query, (cls.TEST_TABLE_NAME, cls.TEST_TABLE_NAME))
         if not cls._cursor.fetchone()[0]:
@@ -97,6 +94,7 @@ class PostgreSQLTestCase(unittest.TestCase):
     @classmethod
     def _fetch_table_metadata(cls):
         """Универсальное получение структуры и ролей"""
+
         query = """
             SELECT column_name, data_type, is_nullable, character_maximum_length, column_default
             FROM information_schema.columns 
@@ -109,8 +107,6 @@ class PostgreSQLTestCase(unittest.TestCase):
         if not rows:
             print(f"Metadata Error: Столбцы для '{cls.TEST_TABLE_NAME}' не найдены.")
             return
-
-        # 1. Заполняем схему
         cls.table_schema = [
             {
                 'name': row[0],
@@ -121,7 +117,6 @@ class PostgreSQLTestCase(unittest.TestCase):
             } for row in rows
         ]
 
-        # 2. Определяем роли для обратной совместимости (People)
         cls.COLUMNS = {'INDEX': None, 'FNAME': None, 'LNAME': None, 'DOB': None}
         for col in cls.table_schema:
             name, dtype = col['name'], col['type'].lower()
