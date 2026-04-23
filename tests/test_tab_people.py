@@ -57,9 +57,7 @@ class TestPeopleDML(PostgreSQLTestCase):
             self.COL_LAST_NAME: "Ivanov1",
             self.COL_DOB: "1989-05-15"
         }
-
         self.db.insert_record(user_data)
-
         cols_to_check = [self.COL_INDEX, self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
         res = self.db.get_column_types(cols_to_check, user_data)
 
@@ -151,12 +149,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_04_select_all_records(self):
         """№ 1-4: Проверка SELECT * (возврат всех записей таблицы 'People')"""
 
-        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
-        values = [
-            ('Ivan', 'Ivanov', '1990-01-01'),
-            ('Petr', 'Petrov', '1985-05-12'),
-            ('Anna', 'Sidorova', '1995-11-20')
-        ]
+        columns, values = self.gen_data_for_insert()
         rows_inserted = self.db.insert_many(columns, values)
         self.assertEqual(rows_inserted, 3, "Должно быть вставлено ровно 3 записи")
         self._cursor.execute(f'SELECT * FROM "{self.TEST_TABLE_NAME}" ORDER BY "{self.COL_INDEX}" ASC')
@@ -198,12 +191,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_06_manual_index_insert(self):
         """№ 1-6 Проверка столбца 'Index' (вставка с ручным указанием 'Index' = 1)"""
 
-        manual_data = {
-            self.COL_INDEX: 1,
-            self.COL_FIRST_NAME: "Petr",
-            self.COL_LAST_NAME: "Petrov",
-            self.COL_DOB: "1995-05-15"
-        }
+        manual_data = self.gen_data_with_index(1)
         rows_affected = self.db.insert_record(manual_data)
         self.assertEqual(rows_affected, 1,
                          f"Команда INSERT с ручным {self.COL_INDEX} должна вернуть 1 строку")
@@ -217,12 +205,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_07_index_type_conversion(self):
         """№ 1-7 Проверка столба 'Index' (вставка с преобразованием типов 2.00)"""
 
-        data = {
-            self.COL_INDEX: 2.00,
-            self.COL_FIRST_NAME: "Sidor",
-            self.COL_LAST_NAME: "Sidorov",
-            self.COL_DOB: "1988-10-10"
-        }
+        data = self.gen_data_with_index(2.00)
         rows_affected = self.db.insert_record(data)
         self.assertEqual(rows_affected, 1, "БД должна автоматически привести 2.00 к целому числу")
         sql = f'SELECT "{self.COL_INDEX}" FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s'
@@ -234,35 +217,20 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_08n_index_check_constraint_violation(self):
         """№ 1-8n Проверка столба 'Index' (вставка с ручным указанием 'Index' = 0)"""
 
-        invalid_data = {
-            self.COL_INDEX: 0,
-            self.COL_FIRST_NAME: "Anna",
-            self.COL_LAST_NAME: "Smirnova",
-            self.COL_DOB: "2000-12-31"
-        }
+        invalid_data = self.gen_data_with_index(0)
         self.assertSqlError('23514', self.db.insert_record, invalid_data)
 
     def test_1_09n_index_out_of_range(self):
         """№ 1-9n Проверка столба 'Index' (вставка значения 2147483648 - выход за границы)"""
 
-        invalid_data = {
-            self.COL_INDEX: 2147483648,
-            self.COL_FIRST_NAME: "Anna",
-            self.COL_LAST_NAME: "Smirnova",
-            self.COL_DOB: "2000-12-31"
-        }
+        invalid_data = self.gen_data_with_index(2147483648)
         self.assertSqlError(['22003', '23514'], self.db.insert_record, invalid_data)
 
     def test_1_10_index_maximum_valid_value(self):
         """№ 1-10 Проверка столба 'Index' (вставка значения 2147483647 - максимум)"""
 
         max_valid_index = 2147483647
-        data = {
-            self.COL_INDEX: max_valid_index,
-            self.COL_FIRST_NAME: "Anna",
-            self.COL_LAST_NAME: "Smirnova",
-            self.COL_DOB: "2000-12-31"
-        }
+        data = self.gen_data_with_index(max_valid_index)
         rows_affected = self.db.insert_record(data)
         self.assertEqual(rows_affected, 1, "Запись с максимальным Index должна быть вставлена успешно")
         sql = (f'SELECT "{self.COL_INDEX}", "{self.COL_FIRST_NAME}" FROM "{self.TEST_TABLE_NAME}"'
@@ -271,28 +239,18 @@ class TestPeopleDML(PostgreSQLTestCase):
         self.assertIsNotNone(record, "Запись не найдена")
         self.assertEqual(record[0], max_valid_index,
                          f"Значение {self.COL_INDEX} в базе должно быть 2147483647")
-        self.assertEqual(record[1], "Anna")
+        self.assertEqual(record[1], "Petr")
 
     def test_1_11n_index_negative_value(self):
         """№ 1-11n Проверка столба 'Index' (вставка с ручным указанием 'Index' < 0)"""
 
-        invalid_data = {
-            self.COL_INDEX: -1,
-            self.COL_FIRST_NAME: "Petr",
-            self.COL_LAST_NAME: "Petrov",
-            self.COL_DOB: "1995-05-15"
-        }
+        invalid_data = self.gen_data_with_index(-1)
         self.assertSqlError('23514', self.db.insert_record, invalid_data)
 
     def test_1_12n_index_string_value(self):
         """№ 1-12n Проверка столба 'Index' (вставка строкового значения в Integer)"""
 
-        invalid_data = {
-            self.COL_INDEX: "Petr",
-            self.COL_FIRST_NAME: "Petr",
-            self.COL_LAST_NAME: "Petrov",
-            self.COL_DOB: "1995-05-15"
-        }
+        invalid_data = self.gen_data_with_index("Petr")
         self.assertSqlError('22P02', self.db.insert_record, invalid_data)
 
     def test_1_13n_dob_integer_instead_of_date(self):
@@ -337,12 +295,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_16_truncate_and_delete_all(self):
         """№ 1-16 Проверка TRUNCATE и DELETE без параметров"""
 
-        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
-        values = [
-            ('Ivan', 'Ivanov', '1990-01-01'),
-            ('Petr', 'Petrov', '1985-05-12'),
-            ('Anna', 'Sidorova', '1995-11-20')
-        ]
+        columns, values = self.gen_data_for_insert()
         rows_inserted = self.db.insert_many(columns, values)
         self.assertEqual(rows_inserted, 3, "Должно быть вставлено 3 записи")
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
@@ -356,9 +309,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_17_delete_where_in(self):
         """№ 1-17 Проверка DELETE с конструкцией WHERE IN"""
 
-        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
-        values = [('Ivan', 'Ivanov', '1990-01-01'), ('Petr', 'Petrov', '1985-05-12'),
-                  ('Anna', 'Sidorova', '1995-11-20')]
+        columns, values = self.gen_data_for_insert()
         self.db.insert_many(columns, values)
         self._cursor.execute(f'SELECT "{self.COL_INDEX}" FROM "{self.TEST_TABLE_NAME}"')
         indices = [row[0] for row in self._cursor.fetchall()]
@@ -372,12 +323,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_18_select_where_like(self):
         """№ 1-18 Проверка SELECT с конструкцией WHERE LIKE"""
 
-        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
-        values = [
-            ('Ivan', 'Ivanov', '1990-01-01'),
-            ('Petr', 'Petrov', '1985-05-12'),
-            ('Anna', 'Sidorova', '1995-11-20')
-        ]
+        columns, values = self.gen_data_for_insert()
         self.db.insert_many(columns, values)
         self._cursor.execute(
             f'SELECT "{self.COL_FIRST_NAME}", "{self.COL_LAST_NAME}",'
@@ -416,12 +362,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_20_select_empty_result(self):
         """№ 1-20 Проверка SELECT, возвращающей пустой ответ"""
 
-        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
-        values = [
-            ('Ivan', 'Ivanov', None),
-            ('Petr', 'Petrov', '1985-05-12'),
-            ('Anna', 'Sidorova', '1995-11-20')
-        ]
+        columns, values = self.gen_data_with_null_birth_for_insert()
         self.db.insert_many(columns, values)
         self._cursor.execute(
             f'SELECT "{self.COL_LAST_NAME}" FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s',
@@ -433,12 +374,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_21_update_with_not_and_logic(self):
         """№ 1-21 Проверка UPDATE с конструкцией WHERE и операторов NOT, AND и ="""
 
-        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
-        values = [
-            ('Ivan', 'Ivanov', None),
-            ('Petr', 'Petrov', '1985-05-12'),
-            ('Anna', 'Sidorova', '1995-11-20')
-        ]
+        columns, values = self.gen_data_with_null_birth_for_insert()
         self.db.insert_many(columns, values)
         query = f"""
             UPDATE "{self.TEST_TABLE_NAME}" 
@@ -458,8 +394,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_22_update_zero_rows(self):
         """№ 1-22 Проверка UPDATE, обновляющей 0 строк"""
 
-        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
-        values = [('Ivan', 'Ivanov', None), ('Petr', 'Petrov', '1985-05-12'), ('Anna', 'Sidorova', '1995-11-20')]
+        columns, values = self.gen_data_with_null_birth_for_insert()
         self.db.insert_many(columns, values)
         self._cursor.execute(
             f'UPDATE "{self.TEST_TABLE_NAME}" SET "{self.COL_LAST_NAME}" = %s WHERE "{self.COL_FIRST_NAME}" = %s',
@@ -472,9 +407,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_23_delete_zero_rows(self):
         """№ 1-23 Проверка DELETE, удаляющей 0 строк"""
 
-        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
-        values = [('Ivan', 'Ivanov', '1990-01-01'), ('Petr', 'Petrov', '1985-05-12'),
-                  ('Anna', 'Sidorova', '1995-11-20')]
+        columns, values = self.gen_data_for_insert()
         self.db.insert_many(columns, values)
         self._cursor.execute(f'DELETE FROM "{self.TEST_TABLE_NAME}" WHERE 0=1')
         self.assertEqual(self._cursor.rowcount, 0, "Команда DELETE должна вернуть 0 удаленных строк")
@@ -559,3 +492,30 @@ class TestPeopleDML(PostgreSQLTestCase):
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
         final_count = self._cursor.fetchone()[0]
         self.assertEqual(final_count, initial_count, "Данные не восстановились после ROLLBACK")
+
+    def gen_data_for_insert(self):
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
+        values = [
+            ('Ivan', 'Ivanov', '1990-01-01'),
+            ('Petr', 'Petrov', '1985-05-12'),
+            ('Anna', 'Sidorova', '1995-11-20')
+        ]
+        return columns, values
+
+    def gen_data_with_index(self, ind_value):
+        manual_data = {
+            self.COL_INDEX: ind_value,
+            self.COL_FIRST_NAME: "Petr",
+            self.COL_LAST_NAME: "Petrov",
+            self.COL_DOB: "1995-05-15"
+        }
+        return manual_data
+
+    def gen_data_with_null_birth_for_insert(self):
+        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
+        values = [
+            ('Ivan', 'Ivanov', None),
+            ('Petr', 'Petrov', '1985-05-12'),
+            ('Anna', 'Sidorova', '1995-11-20')
+        ]
+        return columns, values
