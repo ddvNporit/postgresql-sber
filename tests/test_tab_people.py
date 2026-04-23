@@ -95,15 +95,12 @@ class TestPeopleDML(PostgreSQLTestCase):
                               f"Поле {self.COL_INDEX} должно быть числовым (Integer/Serial)")
 
     def test_1_02_insert_multiple_records(self):
-        """№ 1-2 Проверка INSERT (массовая вставка нескольких записей в таблицу 'People')"""
+        """№ 1-2 Проверка INSERT (массовая вставка нескольких записей)"""
 
-        columns = [self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB]
-        values = [
-            ('Gretta', 'Watson', '1991-02-02'),
-            ('Polla', 'Kimbel', '1992-03-03')
-        ]
-        rows_affected = self.db.insert_many(columns, values)
-        self.assertEqual(rows_affected, 2, "Должно быть вставлено ровно 2 записи")
+        records = self.get_test_data()
+        cols, values = self.to_many(records)  # Разбираем для удобства обращения к values
+        rows_affected = self.db.insert_many(cols, values)
+        self.assertEqual(rows_affected, 3, "Должно быть вставлено 3 записи из генератора")
         sql_count = f"""
             SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}" 
             WHERE ("{self.COL_FIRST_NAME}", "{self.COL_LAST_NAME}", "{self.COL_DOB}") IN (%s, %s)
@@ -113,14 +110,15 @@ class TestPeopleDML(PostgreSQLTestCase):
         sql_unique = f'SELECT COUNT(DISTINCT "{self.COL_INDEX}") = COUNT(*) FROM "{self.TEST_TABLE_NAME}"'
         unique_res = self.execute_query(sql_unique)
         self.assertTrue(unique_res[0], f"Все индексы в таблице {self.COL_INDEX} должны быть уникальными")
+        first_name_to_check = records[0][self.COL_FIRST_NAME]
         sql_check_data = f"""
             SELECT "{self.COL_FIRST_NAME}", "{self.COL_LAST_NAME}", "{self.COL_DOB}" 
             FROM "{self.TEST_TABLE_NAME}" 
-            WHERE "{self.COL_FIRST_NAME}" = 'Gretta'
+            WHERE "{self.COL_FIRST_NAME}" = %s
         """
-        gretta_record = self.execute_query(sql_check_data)
-        self.assertEqual(gretta_record[0], 'Gretta')
-        self.assertEqual(str(gretta_record[2]), '1991-02-02')
+        record = self.execute_query(sql_check_data, (first_name_to_check,))
+        self.assertEqual(record[0], first_name_to_check)
+        self.assertEqual(str(record[2]), str(records[0][self.COL_DOB]))
 
     def test_1_03_insert_min_fields(self):
         """№ 1-3 Проверка INSERT (вставка записи с минимально необходимым набором полей)"""
@@ -149,23 +147,21 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_04_select_all_records(self):
         """№ 1-4: Проверка SELECT * (возврат всех записей таблицы 'People')"""
 
-        records = self.get_test_data()
-        columns = list(records[0].keys())
-        values = [tuple(r.values()) for r in records]
-        rows_inserted = self.db.insert_many(columns, values)
-        self.assertEqual(rows_inserted, 3, "Должно быть вставлено ровно 3 записи")
+        test_records = self.get_test_data()
+        cols, values = self.to_many(test_records)
+        self.db.insert_many(cols, values)
         self._cursor.execute(f'SELECT * FROM "{self.TEST_TABLE_NAME}" ORDER BY "{self.COL_INDEX}" ASC')
-        records = self._cursor.fetchall()
-        self.assertEqual(len(records), 3, f"Ожидалось 3 строки, но получено {len(records)}")
-        for record in records:
-            (self.assertEqual
-             (len(record), 4,
-              f"Строка должна содержать 4 колонки "
-              f"({self.COL_INDEX}, {self.COL_FIRST_NAME}, {self.COL_LAST_NAME}, {self.COL_DOB})"))
+        db_records = self._cursor.fetchall()
+        self.assertEqual(len(db_records), 3, f"Ожидалось 3 строки, но получено {len(db_records)}")
+        for record in db_records:
+            self.assertEqual(len(record), 4,
+                             f"Строка должна содержать 4 колонки ({self.COL_INDEX}, {self.COL_FIRST_NAME}...)")
         for i, val in enumerate(values):
-            self.assertEqual(records[i][1], val[0], f"Имя в строке {i} не совпадает")
-            self.assertEqual(records[i][2], val[1], f"Фамилия в строке {i} не совпадает")
-            self.assertEqual(str(records[i][3]), val[2], f"Дата рождения в строке {i} не совпадает")
+            self.assertEqual(db_records[i][1], val[0], f"Имя в строке {i} не совпадает")
+            self.assertEqual(db_records[i][2], val[1], f"Фамилия в строке {i} не совпадает")
+            db_dob = str(db_records[i][3]) if db_records[i][3] else None
+            expected_dob = str(val[2]) if val[2] else None
+            self.assertEqual(db_dob, expected_dob, f"Дата рождения в строке {i} не совпадает")
 
     def test_1_05_first_name_boundaries(self):
         """№ 1-5 Проверка граничных значений для столбца 'FirstName' (varchar 255)"""
@@ -290,11 +286,7 @@ class TestPeopleDML(PostgreSQLTestCase):
 
     def test_1_16_truncate_and_delete_all(self):
         """№ 1-16 Проверка TRUNCATE и DELETE без параметров"""
-
-        records = self.get_test_data()
-        columns = list(records[0].keys())
-        values = [tuple(r.values()) for r in records]
-        rows_inserted = self.db.insert_many(columns, values)
+        rows_inserted = self.db.insert_many(*self.to_many(self.get_test_data()))
         self.assertEqual(rows_inserted, 3, "Должно быть вставлено 3 записи")
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
         self.assertEqual(self._cursor.fetchone()[0], 3, "Таблица должна содержать 3 строки")
@@ -307,10 +299,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_17_delete_where_in(self):
         """№ 1-17 Проверка DELETE с конструкцией WHERE IN"""
 
-        records = self.get_test_data()
-        columns = list(records[0].keys())
-        values = [tuple(r.values()) for r in records]
-        self.db.insert_many(columns, values)
+        self.db.insert_many(*self.to_many(self.get_test_data()))
         self._cursor.execute(f'SELECT "{self.COL_INDEX}" FROM "{self.TEST_TABLE_NAME}"')
         indices = [row[0] for row in self._cursor.fetchall()]
         self.assertEqual(len(indices), 3, "Таблица должна содержать 3 строки")
@@ -364,10 +353,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_20_select_empty_result(self):
         """№ 1-20 Проверка SELECT, возвращающей пустой ответ"""
 
-        records = self.get_test_data()
-        columns = list(records[0].keys())
-        values = [tuple(r.values()) for r in records]
-        self.db.insert_many(columns, values)
+        self.db.insert_many(*self.to_many(self.get_test_data()))
         self._cursor.execute(
             f'SELECT "{self.COL_LAST_NAME}" FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_FIRST_NAME}" = %s',
             ('Anna1',))
@@ -415,10 +401,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_23_delete_zero_rows(self):
         """№ 1-23 Проверка DELETE, удаляющей 0 строк"""
 
-        records = self.get_test_data()
-        columns = list(records[0].keys())
-        values = [tuple(r.values()) for r in records]
-        self.db.insert_many(columns, values)
+        self.db.insert_many(*self.to_many(self.get_test_data()))
         self._cursor.execute(f'DELETE FROM "{self.TEST_TABLE_NAME}" WHERE 0=1')
         self.assertEqual(self._cursor.rowcount, 0, "Команда DELETE должна вернуть 0 удаленных строк")
         self._cursor.execute(f'SELECT COUNT(*) FROM "{self.TEST_TABLE_NAME}"')
@@ -521,3 +504,9 @@ class TestPeopleDML(PostgreSQLTestCase):
             records[0][self.COL_INDEX] = index
 
         return records
+
+    @staticmethod
+    def to_many(records):
+        """Вспомогательный метод для трансформации списка словарей для insert_many"""
+
+        return list(records[0].keys()), [tuple(r.values()) for r in records]
