@@ -240,11 +240,8 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_13n_dob_integer_instead_of_date(self):
         """№ 1-13n Проверка столба 'DataOfBirth' (вставка числа вместо даты)"""
 
-        invalid_data = {
-            self.COL_FIRST_NAME: "Ivan",
-            self.COL_LAST_NAME: "Ivanov",
-            self.COL_DOB: 1
-        }
+        invalid_data = self.get_test_data()[0]
+        invalid_data[self.COL_DOB] = 1
         self.assertSqlError('42804', self.db.insert_record, invalid_data)
 
     def test_1_14_dob_valid_string_formats(self):
@@ -268,12 +265,8 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_15n_dob_invalid_month(self):
         """№ 1-15n Проверка невалидного значения месяца в столбе 'DataOfBirth' (13 месяц)"""
 
-        invalid_data = {
-            self.COL_INDEX: 2,
-            self.COL_FIRST_NAME: "Error",
-            self.COL_LAST_NAME: "User",
-            self.COL_DOB: "1975-13-2"
-        }
+        invalid_data = self.get_test_data()[0]
+        invalid_data[self.COL_DOB] = "1975-13-2"
         self.assertSqlError('22008', self.db.insert_record, invalid_data)
 
     def test_1_16_truncate_and_delete_all(self):
@@ -320,27 +313,20 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_19_select_is_null(self):
         """№ 1-19 Проверка SELECT с конструкцией WHERE и оператора IS NULL"""
 
-        check_value = ('Ivan', 'Ivanov')
-        check_columns = (self.COL_FIRST_NAME, self.COL_LAST_NAME)
-        columns = list(check_columns) + [self.COL_DOB]
-        values = [
-            (check_value[0], check_value[1], None),
-            ('Petr', 'Petrov', '1985-05-12'),
-            ('Anna', 'Sidorova', '1995-11-20')
-        ]
-        self.db.insert_many(columns, values)
-        query = \
-            (f'SELECT "{check_columns[0]}", "{check_columns[1]}" '
-             f'FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_DOB}" IS NULL')
+        records = self.get_test_data(with_null_dob=True)
+        self.db.insert_many(*self.to_many(records))
+        query = (f'SELECT "{self.COL_FIRST_NAME}", "{self.COL_LAST_NAME}" '
+                 f'FROM "{self.TEST_TABLE_NAME}" WHERE "{self.COL_DOB}" IS NULL')
         self._cursor.execute(query)
         result = self._cursor.fetchall()
         self.assertEqual(len(result), 1, f"Должна быть найдена ровно 1 запись с NULL в {self.COL_DOB}")
-        first_name, last_name = result[0]
 
-        self.assertEqual(first_name, check_value[0],
-                         f"Столбец {check_columns[0]} должен быть {check_value[0]}")
-        self.assertEqual(last_name, check_value[1],
-                         f"Столбец {check_columns[1]} должен быть {check_value[1]}")
+        first_name, last_name = result[0]
+        expected_fname = records[0][self.COL_FIRST_NAME]
+        expected_lname = records[0][self.COL_LAST_NAME]
+
+        self.assertEqual(first_name, expected_fname, f"Имя должно быть {expected_fname}")
+        self.assertEqual(last_name, expected_lname, f"Фамилия должна быть {expected_lname}")
 
     def test_1_20_select_empty_result(self):
         """№ 1-20 Проверка SELECT, возвращающей пустой ответ"""
@@ -436,12 +422,7 @@ class TestPeopleDML(PostgreSQLTestCase):
     def test_1_26_aggregate_functions_count_avg(self):
         """№ 1-26 Проверка SELECT с агрегатными функциями (стабильный расчет)"""
 
-        values = [
-            ('Old', 'Man', '1970-01-01'),
-            ('Young', 'Girl', '2000-01-01'),
-            ('Middle', 'Age', '1990-01-01')
-        ]
-        self.db.insert_many([self.COL_FIRST_NAME, self.COL_LAST_NAME, self.COL_DOB], values)
+        self.db.insert_many(*self.to_many(self.get_test_data()))
         query = f"""
             SELECT COUNT(*) AS total_people, 
                    AVG(EXTRACT(YEAR FROM AGE(TIMESTAMP '2026-01-01', "{self.COL_DOB}"))) AS avg_age 
@@ -450,7 +431,7 @@ class TestPeopleDML(PostgreSQLTestCase):
         self._cursor.execute(query)
         result = self._cursor.fetchone()
         self.assertEqual(result[0], 3)
-        expected_avg = 39.33
+        expected_avg = 35.33
         actual_avg = float(result[1])
 
         self.assertAlmostEqual(actual_avg, expected_avg, places=2,
