@@ -15,6 +15,9 @@ from db.helpers import DbActions
 class TestPeopleDML(PostgreSQLTestCase):
     db: DbActions = None
 
+    ## Закомментировать если имена столбцов не должны определяться скриптом ##
+    ### Блок динамического определения имен столбцов таблицы #################
+
     @property
     def COL_INDEX(self):
         return self.COLUMNS['INDEX']
@@ -48,6 +51,22 @@ class TestPeopleDML(PostgreSQLTestCase):
     def setUp(self):
         super().setUp()
         self.db.cursor = self._cursor
+
+    # ### Конец блока динамического определения имен столбцов #######
+
+    # ## Закомментировать если имена столбцов определятся скриптом ##
+    # ### Блок Имена столбцов жестко определены #####################
+    #
+    # TEST_TABLE_NAME = "People"
+    # COL_INDEX = "Index"
+    # COL_FIRST_NAME = "FirstName"
+    # COL_LAST_NAME = "LastName"
+    # COL_DOB = "DataOfBirth"
+    #
+    # def setUp(self):
+    #     super().setUp()
+    #     self.db = DbActions(self._cursor, self.TEST_TABLE_NAME)
+    # ### Конец Блок Имена столбцов жестко определены ################
 
     def test_1_00_insert_and_verify_properties(self):
         """№ 1-0 Проверка свойств таблицы 'People'"""
